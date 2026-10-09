@@ -1,0 +1,3535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>混乱枪战 - Gun Mayhem Style</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'gun-dark': '#0f0f1e',
+        'gun-purple': '#6c2bd9',
+        'gun-cyan': '#00d9ff',
+        'gun-orange': '#ff6b1a',
+        'gun-red': '#ff2b4a',
+        'gun-green': '#2bff88',
+        'gun-yellow': '#ffd700',
+      },
+      fontFamily: {
+        'game': ['Russo One', 'sans-serif'],
+      }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; overflow: hidden; background: #0a0a14; user-select: none; }
+  .font-game { font-family: 'Russo One', sans-serif; }
+  
+  #gameCanvas { display: block; image-rendering: pixelated; }
+  
+  .menu-bg {
+    background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a14 70%);
+    background-size: cover;
+  }
+  
+  #menuParticles { pointer-events: none; }
+  
+  .glass {
+    background: rgba(20, 20, 40, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(108, 43, 217, 0.3);
+  }
+  
+  .glass-light {
+    background: rgba(40, 40, 80, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .btn-game {
+    transition: all 0.2s ease;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.5);
+  }
+  
+  .btn-game:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 25px rgba(108, 43, 217, 0.5);
+  }
+  
+  .btn-game:active { transform: translateY(0) scale(0.98); }
+  
+  .map-card { transition: all 0.3s ease; cursor: pointer; }
+  .map-card:hover { transform: scale(1.05); border-color: #00d9ff; }
+  .map-card.selected { border-color: #ffd700; box-shadow: 0 0 20px rgba(255, 215, 0, 0.5); }
+  
+  .player-slot { transition: all 0.3s ease; }
+  .player-slot.active { border-color: #00d9ff; }
+  
+  .key-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 24px;
+    text-align: center;
+  }
+  
+  .key-bind-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    padding: 4px 12px;
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 60px;
+  }
+  
+  .key-bind-btn:hover { background: rgba(0,217,255,0.2); border-color: #00d9ff; }
+  .key-bind-btn.listening { background: rgba(255,215,0,0.2); border-color: #ffd700; animation: pulse 1s infinite; }
+  
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 15px rgba(108, 43, 217, 0.4); }
+    50% { box-shadow: 0 0 30px rgba(108, 43, 217, 0.8); }
+  }
+  .pulse-glow { animation: pulse-glow 2s infinite; }
+  
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide-in { animation: slideIn 0.4s ease; }
+  
+  .hud-bar { height: 8px; border-radius: 4px; overflow: hidden; background: rgba(0,0,0,0.5); }
+  .hud-fill { height: 100%; transition: width 0.3s ease; border-radius: 4px; }
+  
+  .screen { display: none !important; }
+  .screen.active { display: flex !important; }
+  
+  .kill-feed-item { animation: slideInRight 0.3s ease; }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(50px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  .control-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 12px;
+    align-items: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- 主菜单 -->
+<div id="mainMenu" class="screen active menu-bg w-full h-screen flex flex-col items-center justify-center relative overflow-hidden">
+  <canvas id="menuParticles" class="absolute inset-0 w-full h-full"></canvas>
+  
+  <div class="relative z-10 text-center mb-8 slide-in">
+    <h1 class="font-game text-6xl md:text-8xl mb-2" style="background: linear-gradient(135deg, #ff2b4a, #ff6b1a, #ffd700); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+      混乱枪战
+    </h1>
+    <p class="text-gray-400 text-lg tracking-widest font-game">GUN MAYHEM</p>
+  </div>
+
+  <div class="glass rounded-2xl p-8 w-[600px] max-w-[90vw] slide-in relative z-10" style="animation-delay: 0.1s">
+    <div class="grid grid-cols-1 gap-4">
+      <button onclick="showScreen('modeSelect')" class="btn-game bg-gradient-to-r from-gun-purple to-purple-600 text-white font-game text-2xl py-4 rounded-xl">
+        <i class="fas fa-play mr-2"></i>开始游戏
+      </button>
+      <button onclick="showScreen('howToPlay')" class="btn-game glass-light text-white font-game text-xl py-3 rounded-xl">
+        <i class="fas fa-gamepad mr-2"></i>操作说明
+      </button>
+      <button onclick="showScreen('settings')" class="btn-game glass-light text-white font-game text-xl py-3 rounded-xl">
+        <i class="fas fa-cog mr-2"></i>设置
+      </button>
+      <button onclick="showScreen('keyBindings')" class="btn-game glass-light text-white font-game text-xl py-3 rounded-xl">
+        <i class="fas fa-keyboard mr-2"></i>键位设置
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 模式选择 -->
+<div id="modeSelect" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
+  <h2 class="font-game text-4xl text-white mb-8">选择模式</h2>
+  
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl">
+    <div onclick="selectMode('deathmatch')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-skull-crossbones text-gun-red"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">死亡竞赛</h3>
+      <p class="text-gray-400 text-xs text-center">所有人对抗所有人</p>
+    </div>
+    
+    <div onclick="selectMode('team')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-users text-gun-cyan"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">团队战</h3>
+      <p class="text-gray-400 text-xs text-center">红蓝两队对战</p>
+    </div>
+    
+    <div onclick="selectMode('survival')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-shield-alt text-gun-green"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">生存模式</h3>
+      <p class="text-gray-400 text-xs text-center">对抗AI波次</p>
+    </div>
+    
+    <div onclick="selectMode('lastMan')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-trophy text-gun-yellow"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">最后幸存</h3>
+      <p class="text-gray-400 text-xs text-center">每人固定命数，耗尽即淘汰</p>
+    </div>
+    
+    <div onclick="selectMode('airBattle')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-jet-fighter text-gun-orange"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">不列颠空战</h3>
+      <p class="text-gray-400 text-xs text-center">全员额外喷气背包，燃料缓慢回复</p>
+    </div>
+    
+    <div onclick="selectMode('infiniteFirepower')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-infinity text-gun-purple"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">无限火力</h3>
+      <p class="text-gray-400 text-xs text-center">人类合作，AI不断刷新</p>
+    </div>
+    
+    <div onclick="selectMode('bossBattle')" class="glass rounded-xl p-5 cursor-pointer hover:scale-105 transition-all border-2 border-transparent hover:border-gun-cyan">
+      <div class="text-4xl mb-2 text-center"><i class="fas fa-dragon text-gun-red"></i></div>
+      <h3 class="font-game text-lg text-white text-center mb-1">封魔之地</h3>
+      <p class="text-gray-400 text-xs text-center">合作挑战强力首领</p>
+    </div>
+  </div>
+
+  <div class="flex gap-4 mt-8">
+    <button onclick="showScreen('mainMenu')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game">
+      <i class="fas fa-arrow-left mr-2"></i>返回
+    </button>
+  </div>
+</div>
+
+<!-- 玩家设置 -->
+<div id="playerSetup" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
+  <h2 class="font-game text-4xl text-white mb-2">玩家设置</h2>
+  <p class="text-gray-400 mb-2">模式: <span id="modeLabel" class="text-gun-cyan font-bold"></span></p>
+  
+  <div id="bossDifficultyRow" class="glass rounded-xl px-6 py-3 mb-4 hidden">
+    <label class="text-white text-sm font-bold mr-3">首领难度</label>
+    <select id="bossDifficulty" class="bg-black/40 text-white rounded-lg px-4 py-1.5 border border-white/10">
+      <option value="easy">简单 (1500 HP)</option>
+      <option value="normal">普通 (2500 HP)</option>
+      <option value="hard">困难 (4000 HP)</option>
+    </select>
+  </div>
+  
+  <div id="playerSlots" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl w-full mb-6"></div>
+
+  <div class="flex gap-4">
+    <button onclick="showScreen('modeSelect')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game">
+      <i class="fas fa-arrow-left mr-2"></i>返回
+    </button>
+    <button onclick="goToMapSelect()" class="btn-game bg-gradient-to-r from-gun-purple to-purple-600 text-white px-8 py-3 rounded-xl font-game text-lg pulse-glow">
+      下一步 <i class="fas fa-arrow-right ml-2"></i>
+    </button>
+  </div>
+</div>
+
+<!-- 地图选择 -->
+<div id="mapSelect" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4">
+  <h2 class="font-game text-4xl text-white mb-8">选择地图</h2>
+  
+  <div id="mapGrid" class="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl"></div>
+
+  <div class="flex gap-4 mt-8">
+    <button onclick="showScreen('playerSetup')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game">
+      <i class="fas fa-arrow-left mr-2"></i>返回
+    </button>
+    <button onclick="startGame()" class="btn-game bg-gradient-to-r from-gun-green to-green-500 text-white px-8 py-3 rounded-xl font-game text-lg pulse-glow">
+      <i class="fas fa-play mr-2"></i>开始战斗
+    </button>
+  </div>
+</div>
+
+<!-- 键位设置 -->
+<div id="keyBindings" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
+  <h2 class="font-game text-4xl text-white mb-2">键位设置</h2>
+  <p class="text-gray-400 mb-6">点击按键按钮后按下新的按键来重新绑定</p>
+  
+  <div id="keyBindingsContainer" class="glass rounded-2xl p-6 max-w-3xl w-full"></div>
+
+  <div class="flex gap-4 mt-6">
+    <button onclick="resetKeyBindings()" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game">
+      <i class="fas fa-undo mr-2"></i>重置默认
+    </button>
+    <button onclick="showScreen('mainMenu')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game">
+      <i class="fas fa-arrow-left mr-2"></i>返回
+    </button>
+  </div>
+</div>
+
+<!-- 游戏画面 -->
+<div id="gameScreen" class="screen w-full h-screen relative bg-black">
+  <canvas id="gameCanvas" class="w-full h-full"></canvas>
+  
+  <!-- 顶部HUD -->
+  <div id="topHUD" class="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-20">
+    <div id="killFeed" class="space-y-1 max-w-xs"></div>
+    <div id="gameInfo" class="glass rounded-lg px-6 py-2 text-center">
+      <div id="gameModeText" class="font-game text-white text-lg"></div>
+      <div id="gameScoreText" class="text-gray-300 text-sm"></div>
+    </div>
+    <div class="space-y-2">
+      <button onclick="pauseGame()" class="glass rounded-lg px-4 py-2 text-white pointer-events-auto hover:bg-white/10 transition">
+        <i class="fas fa-pause"></i>
+      </button>
+    </div>
+  </div>
+  
+  <!-- 首领血条 -->
+  <div id="bossHealthBar" class="hidden absolute top-20 left-1/2 -translate-x-1/2 w-[420px] z-20 pointer-events-none">
+    <div class="glass rounded-xl p-3">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg overflow-hidden relative bg-gun-red border-2 border-white/20 flex-shrink-0">
+          <i class="fas fa-skull text-white absolute inset-0 flex items-center justify-center text-lg"></i>
+          <img src="3.png" class="w-full h-full object-cover relative" onerror="this.remove()">
+        </div>
+        <div class="flex-1">
+          <div class="flex justify-between mb-1">
+            <span class="font-game text-gun-red text-sm">魔界首领</span>
+            <span class="text-gray-300 text-xs" id="bossHealthText"></span>
+          </div>
+          <div class="hud-bar" style="height: 12px;">
+            <div class="hud-fill" id="bossHealthFill" style="width: 100%; background: linear-gradient(90deg, #8a0a1a, #ff2b4a, #ff6b1a);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 玩家HUD -->
+  <div id="playerHUDs" class="absolute bottom-0 left-0 right-0 p-4 flex justify-around pointer-events-none z-20"></div>
+  
+  <!-- 暂停菜单 -->
+  <div id="pauseMenu" class="absolute inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-30 hidden">
+    <div class="glass rounded-2xl p-8 w-80 text-center">
+      <h3 class="font-game text-3xl text-white mb-6">暂停</h3>
+      <div class="space-y-3">
+        <button onclick="resumeGame()" class="btn-game bg-gradient-to-r from-gun-green to-green-500 text-white w-full py-3 rounded-xl font-game">
+          <i class="fas fa-play mr-2"></i>继续
+        </button>
+        <button onclick="restartGame()" class="btn-game glass-light text-white w-full py-3 rounded-xl font-game">
+          <i class="fas fa-redo mr-2"></i>重新开始
+        </button>
+        <button onclick="quitToMenu()" class="btn-game glass-light text-white w-full py-3 rounded-xl font-game">
+          <i class="fas fa-home mr-2"></i>返回主菜单
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 游戏结束 -->
+  <div id="gameOverScreen" class="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-30 hidden">
+    <div class="glass rounded-2xl p-10 w-96 text-center">
+      <h3 id="gameOverTitle" class="font-game text-4xl mb-2"></h3>
+      <p id="gameOverSubtitle" class="text-gray-400 mb-6"></p>
+      <div id="finalStats" class="space-y-2 mb-6 text-left"></div>
+      <div class="space-y-3">
+        <button onclick="restartGame()" class="btn-game bg-gradient-to-r from-gun-purple to-purple-600 text-white w-full py-3 rounded-xl font-game">
+          <i class="fas fa-redo mr-2"></i>再玩一次
+        </button>
+        <button onclick="quitToMenu()" class="btn-game glass-light text-white w-full py-3 rounded-xl font-game">
+          <i class="fas fa-home mr-2"></i>返回主菜单
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 操作说明 -->
+<div id="howToPlay" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4 overflow-y-auto">
+  <h2 class="font-game text-4xl text-white mb-6">操作说明</h2>
+  
+  <div class="glass rounded-2xl p-8 max-w-2xl w-full">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <h3 class="font-game text-xl text-gun-cyan mb-3">玩家1 (红方)</h3>
+        <div class="control-grid text-white text-sm">
+          <span class="key-badge">W</span><span>跳跃(二段跳)/飞行</span>
+          <span class="key-badge">A</span><span>左移</span>
+          <span class="key-badge">D</span><span>右移</span>
+          <span class="key-badge">F</span><span>射击(炸弹可蓄力)</span>
+          <span class="key-badge">G</span><span>技能</span>
+          <span class="key-badge">S</span><span>下蹲/格挡</span>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-game text-xl text-gun-cyan mb-3">玩家2 (蓝方)</h3>
+        <div class="control-grid text-white text-sm">
+          <span class="key-badge">↑</span><span>跳跃/飞行</span>
+          <span class="key-badge">←</span><span>左移</span>
+          <span class="key-badge">→</span><span>右移</span>
+          <span class="key-badge">.</span><span>射击</span>
+          <span class="key-badge">/</span><span>技能</span>
+          <span class="key-badge">↓</span><span>下蹲/格挡</span>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-game text-xl text-gun-cyan mb-3">玩家3 (绿方)</h3>
+        <div class="control-grid text-white text-sm">
+          <span class="key-badge">T</span><span>跳跃/飞行</span>
+          <span class="key-badge">F</span><span>左移</span>
+          <span class="key-badge">H</span><span>右移</span>
+          <span class="key-badge">5</span><span>射击</span>
+          <span class="key-badge">6</span><span>技能</span>
+          <span class="key-badge">G</span><span>下蹲/格挡</span>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-game text-xl text-gun-cyan mb-3">玩家4 (黄方)</h3>
+        <div class="control-grid text-white text-sm">
+          <span class="key-badge">I</span><span>跳跃/飞行</span>
+          <span class="key-badge">J</span><span>左移</span>
+          <span class="key-badge">L</span><span>右移</span>
+          <span class="key-badge">0</span><span>射击</span>
+          <span class="key-badge">-</span><span>技能</span>
+          <span class="key-badge">K</span><span>下蹲/格挡</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="mt-6 pt-6 border-t border-white/10">
+      <h3 class="font-game text-xl text-gun-yellow mb-3">游戏技巧</h3>
+      <ul class="text-gray-300 text-sm space-y-2">
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>被戒尺击中会被击飞成抛物线，飞出极远的距离！</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>掉出地图前5秒内受过伤害，视为被最后攻击者击杀</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>最后幸存模式：每人固定命数，耗尽即淘汰</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>脉冲镭射射程极长，可横跨整张地图</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>诸葛连弩三箭齐发带毒：扣血、减速15%、禁用三段跳</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>炸弹与飞刀为抛物线弹道，注意预判落点</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>不列颠空战：按住跳跃键消耗燃料飞行，松开缓慢回燃料</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>无限火力：AI每7~12秒刷新，死亡不复活</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>封魔之地：首领每损失15%血量召唤一个仆从</li>
+        <li><i class="fas fa-circle text-gun-green text-xs mr-2"></i>AI头像：将 1.png / 2.png / 3.png 放在与网页同目录即可显示</li>
+      </ul>
+    </div>
+  </div>
+  
+  <button onclick="showScreen('mainMenu')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game mt-6">
+    <i class="fas fa-arrow-left mr-2"></i>返回
+  </button>
+</div>
+
+<!-- 设置 -->
+<div id="settings" class="screen menu-bg w-full h-screen flex flex-col items-center justify-center p-4">
+  <h2 class="font-game text-4xl text-white mb-6">设置</h2>
+  
+  <div class="glass rounded-2xl p-8 w-96 space-y-4">
+    <div>
+      <label class="text-white text-sm font-bold block mb-2">目标击杀数</label>
+      <select id="killLimit" class="w-full bg-black/40 text-white rounded-lg px-4 py-2 border border-white/10">
+        <option value="5">5 击杀</option>
+        <option value="10" selected>10 击杀</option>
+        <option value="15">15 击杀</option>
+        <option value="20">20 击杀</option>
+        <option value="999">无限</option>
+      </select>
+    </div>
+    
+    <div>
+      <label class="text-white text-sm font-bold block mb-2">重力强度</label>
+      <input type="range" id="gravitySetting" min="0.3" max="1.5" step="0.1" value="0.8" class="w-full">
+      <span id="gravityValue" class="text-gray-400 text-sm">0.8</span>
+    </div>
+    
+    <div>
+      <label class="text-white text-sm font-bold block mb-2">击退力度</label>
+      <input type="range" id="knockbackSetting" min="0.5" max="2.0" step="0.1" value="1.0" class="w-full">
+      <span id="knockbackValue" class="text-gray-400 text-sm">1.0</span>
+    </div>
+    
+    <div class="flex items-center justify-between">
+      <label class="text-white text-sm font-bold">武器掉落</label>
+      <input type="checkbox" id="weaponDrop" checked class="w-5 h-5">
+    </div>
+    
+    <div class="flex items-center justify-between">
+      <label class="text-white text-sm font-bold">显示FPS</label>
+      <input type="checkbox" id="showFPS" class="w-5 h-5">
+    </div>
+    
+    <div class="flex items-center justify-between">
+      <label class="text-white text-sm font-bold">球状闪电</label>
+      <input type="checkbox" id="ballLightning" class="w-5 h-5">
+    </div>
+    <p class="text-gray-400 text-xs">球状闪电在玩家死亡后1.5秒释放，碰到即死，持续8秒</p>
+  </div>
+  
+  <button onclick="showScreen('mainMenu')" class="btn-game glass-light text-white px-6 py-3 rounded-xl font-game mt-6">
+    <i class="fas fa-arrow-left mr-2"></i>返回
+  </button>
+</div>
+
+<script>
+// ==================== 游戏配置 ====================
+const CONFIG = {
+  CANVAS_WIDTH: 1280,
+  CANVAS_HEIGHT: 720,
+  GRAVITY: 0.8,
+  JUMP_POWER: 13,
+  MOVE_SPEED: 4.5,
+  FRICTION: 0.85,
+  KNOCKBACK_MULTIPLIER: 1.0,
+  RESPAWN_TIME: 180,
+  MAX_FALL_SPEED: 20,
+  BALL_LIGHTNING_DELAY: 90,
+  BALL_LIGHTNING_DURATION: 480,
+  LAST_MAN_LIVES: 5,          // 最后幸存模式：每人固定命数
+  FALL_KILL_WINDOW: 300,      // 掉出地图击杀归属窗口：5秒 = 300帧
+  LAUNCH_THRESHOLD: 30,       // 击退达到此值触发抛物线击飞
+};
+
+const MODE_NAMES = {
+  deathmatch: '死亡竞赛',
+  team: '团队战',
+  survival: '生存模式',
+  lastMan: '最后幸存',
+  airBattle: '不列颠空战',
+  infiniteFirepower: '无限火力',
+  bossBattle: '封魔之地',
+};
+
+// ==================== 武器配置 ====================
+const WEAPONS = {
+  pistol: {
+    name: '手枪', color: '#ffd700',
+    damage: 8, knockback: 6, fireRate: 18, bulletSpeed: 12,
+    bulletSize: 4, bulletColor: '#ffd700', spread: 0.02,
+    ammo: Infinity, desc: '平衡的起始武器'
+  },
+  shotgun: {
+    name: '霰弹枪', color: '#ff6b1a',
+    damage: 5, knockback: 8, fireRate: 45, bulletSpeed: 10,
+    bulletSize: 3, bulletColor: '#ff6b1a', spread: 0.15, pellets: 5,
+    ammo: 30, desc: '近距离高击退'
+  },
+  machineGun: {
+    name: '机枪', color: '#ff2b4a',
+    damage: 4, knockback: 3, fireRate: 6, bulletSpeed: 14,
+    bulletSize: 3, bulletColor: '#ff2b4a', spread: 0.08,
+    ammo: 60, desc: '高射速低击退'
+  },
+  sniper: {
+    name: '狙击枪', color: '#00d9ff',
+    damage: 20, knockback: 15, fireRate: 60, bulletSpeed: 25,
+    bulletSize: 5, bulletColor: '#00d9ff', spread: 0,
+    ammo: 10, stealth: true, desc: '超高伤害，默认隐身'
+  },
+  rocketLauncher: {
+    name: '火箭筒', color: '#ff2b4a',
+    damage: 15, knockback: 20, fireRate: 80, bulletSpeed: 8,
+    bulletSize: 8, bulletColor: '#ff6b1a', spread: 0,
+    ammo: 5, explosive: true, explosionRadius: 80, desc: '范围爆炸伤害'
+  },
+  homingRocket: {
+    name: '追踪火箭', color: '#6c2bd9',
+    damage: 12, knockback: 18, fireRate: 90, bulletSpeed: 6,
+    bulletSize: 7, bulletColor: '#6c2bd9', spread: 0,
+    ammo: 4, homing: true, explosive: true, explosionRadius: 60, desc: '自动追踪敌人'
+  },
+  katana: {
+    name: '武士刀', color: '#2bff88',
+    damage: 12, knockback: 10, fireRate: 25, bulletSpeed: 0,
+    melee: true, range: 60, reflect: true, reflectChance: 0.85, desc: '近战+高几率反弹子弹'
+  },
+  minigun: {
+    name: '加特林', color: '#ffd700',
+    damage: 3, knockback: 2, fireRate: 3, bulletSpeed: 13,
+    bulletSize: 3, bulletColor: '#ffd700', spread: 0.12,
+    ammo: 100, desc: '极限射速'
+  },
+  plasmaRifle: {
+    name: '等离子枪', color: '#00d9ff',
+    damage: 10, knockback: 7, fireRate: 20, bulletSpeed: 16,
+    bulletSize: 5, bulletColor: '#00d9ff', spread: 0.03,
+    ammo: 40, piercing: true, desc: '穿透多个敌人'
+  },
+  bomb: {
+    name: '炸弹', color: '#ff2b4a',
+    damage: 10, knockback: 15, fireRate: 60, bulletSpeed: 9,
+    bulletSize: 8, bulletColor: '#ff6b1a', spread: 0,
+    ammo: 8, explosive: true, explosionRadius: 60, chargeable: true, maxCharge: 60,
+    projectileArc: true, arcLift: 5, gravity: 0.3, desc: '长按蓄力，抛物线投掷'
+  },
+  ruler: {
+    name: '戒尺', color: '#8a6600',
+    damage: 6, knockback: 45, fireRate: 30, bulletSpeed: 0,
+    melee: true, range: 50, stun: true, stunDuration: 60, desc: '超高击退！抛物线击飞敌人'
+  },
+  umbrella: {
+    name: '雨伞', color: '#ff6b1a',
+    damage: 8, knockback: 8, fireRate: 25, bulletSpeed: 0,
+    melee: true, range: 45, shield: true, shieldMultiplier: 0.5, desc: '攻击+护盾，护盾值为血量一半'
+  },
+  flyingKnife: {
+    name: '飞刀', color: '#cccccc',
+    damage: 8, knockback: 5, fireRate: 30, bulletSpeed: 13,
+    bulletSize: 4, bulletColor: '#cccccc', spread: 0,
+    ammo: 6, stickToTarget: true, stickDamage: 2, stickDuration: 120,
+    disableStealth: true, projectileArc: true, arcLift: 4, gravity: 0.2, desc: '抛物线飞刀，禁用隐身'
+  },
+  zhugeCrossbow: {
+    name: '诸葛连弩', color: '#2bff88',
+    damage: 6, knockback: 4, fireRate: 40, bulletSpeed: 14,
+    bulletSize: 4, bulletColor: '#2bff88', spread: 0, pellets: 3, volleySpread: 0.09,
+    ammo: 45, poison: true, gravity: 0.06, desc: '三箭齐发，箭矢带毒'
+  },
+  pulseLaser: {
+    name: '脉冲镭射', color: '#ff2b4a',
+    damage: 5, knockback: 3, fireRate: 180, bulletSpeed: 0,
+    bulletSize: 0, bulletColor: '#ff2b4a', spread: 0,
+    ammo: Infinity, laserBeam: true, laserDuration: 90, laserMaxLength: 2000,
+    desc: '超长穿透光束1.5秒，期间无法移动，CD 3秒'
+  },
+  unarmed: {
+    name: '空手', color: '#888888',
+    damage: 3, knockback: 3, fireRate: 20, bulletSpeed: 0,
+    melee: true, range: 30, desc: '没有武器时的状态'
+  },
+};
+
+// ==================== 技能配置 ====================
+const SKILLS = {
+  tripleJump: {
+    name: '三段跳', color: '#00d9ff',
+    cooldown: 0, passive: true, desc: '可以空中再跳两次'
+  },
+  selfDestruct: {
+    name: '自爆', color: '#ff2b4a',
+    cooldown: 0, passive: true, desc: '血量归零时发生炸弹级爆炸'
+  },
+  dash: { name: '冲刺', color: '#2bff88', cooldown: 180, active: true, desc: '快速冲刺，短暂无敌' },
+  shield: { name: '护盾', color: '#00d9ff', cooldown: 300, active: true, duration: 120, desc: '生成护盾抵挡伤害' },
+  speedBoost: { name: '加速', color: '#ffd700', cooldown: 240, active: true, duration: 180, desc: '移动速度大幅提升' },
+  jetpack: { name: '喷气背包', color: '#ff6b1a', cooldown: 300, active: true, duration: 100, desc: '短暂飞行能力' },
+  teleport: { name: '瞬移', color: '#6c2bd9', cooldown: 200, active: true, desc: '瞬移到瞄准方向' },
+  heal: { name: '治疗', color: '#2bff88', cooldown: 360, active: true, desc: '恢复部分生命值' },
+  megaBlast: { name: '冲击波', color: '#ff2b4a', cooldown: 400, active: true, desc: '冲击波击退附近敌人' },
+};
+
+// ==================== 地图配置 ====================
+const MAPS = {
+  arena: {
+    name: '竞技场',
+    platforms: [
+      {x: 0, y: 680, w: 1280, h: 40, color: '#3a3a5c'},
+      {x: 100, y: 520, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 980, y: 520, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 540, y: 450, w: 200, h: 20, color: '#5a5a7c'},
+      {x: 200, y: 350, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 930, y: 350, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 565, y: 250, w: 150, h: 20, color: '#5a5a7c'},
+    ],
+    spawnPoints: [
+      {x: 150, y: 600}, {x: 1130, y: 600},
+      {x: 250, y: 300}, {x: 1030, y: 300},
+    ],
+    bgGradient: ['#1a1a3e', '#0a0a14'], theme: 'classic'
+  },
+  tower: {
+    name: '高塔',
+    platforms: [
+      {x: 0, y: 680, w: 400, h: 40, color: '#3a3a5c'},
+      {x: 880, y: 680, w: 400, h: 40, color: '#3a3a5c'},
+      {x: 540, y: 580, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 300, y: 480, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 830, y: 480, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 540, y: 380, w: 200, h: 20, color: '#5a5a7c'},
+      {x: 100, y: 300, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 1030, y: 300, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 565, y: 200, w: 150, h: 20, color: '#5a5a7c'},
+    ],
+    spawnPoints: [
+      {x: 200, y: 600}, {x: 1080, y: 600},
+      {x: 600, y: 500}, {x: 640, y: 300},
+    ],
+    bgGradient: ['#2a1a3e', '#0a0a14'], theme: 'tower'
+  },
+  bridge: {
+    name: '断桥',
+    platforms: [
+      {x: 0, y: 680, w: 350, h: 40, color: '#3a3a5c'},
+      {x: 470, y: 680, w: 340, h: 40, color: '#3a3a5c'},
+      {x: 930, y: 680, w: 350, h: 40, color: '#3a3a5c'},
+      {x: 150, y: 500, w: 180, h: 20, color: '#4a4a6c'},
+      {x: 950, y: 500, w: 180, h: 20, color: '#4a4a6c'},
+      {x: 540, y: 450, w: 200, h: 20, color: '#5a5a7c'},
+      {x: 100, y: 320, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 980, y: 320, w: 200, h: 20, color: '#4a4a6c'},
+    ],
+    spawnPoints: [
+      {x: 175, y: 600}, {x: 1105, y: 600},
+      {x: 240, y: 450}, {x: 1040, y: 450},
+    ],
+    bgGradient: ['#1a2a3e', '#0a0a14'], theme: 'bridge'
+  },
+  pyramid: {
+    name: '金字塔',
+    platforms: [
+      {x: 0, y: 680, w: 1280, h: 40, color: '#3a3a5c'},
+      {x: 440, y: 580, w: 400, h: 20, color: '#4a4a6c'},
+      {x: 340, y: 480, w: 600, h: 20, color: '#4a4a6c'},
+      {x: 240, y: 380, w: 800, h: 20, color: '#5a5a7c'},
+      {x: 140, y: 280, w: 1000, h: 20, color: '#5a5a7c'},
+      {x: 565, y: 180, w: 150, h: 20, color: '#6a6a8c'},
+    ],
+    spawnPoints: [
+      {x: 100, y: 600}, {x: 1180, y: 600},
+      {x: 640, y: 500}, {x: 640, y: 200},
+    ],
+    bgGradient: ['#3a2a1e', '#0a0a14'], theme: 'pyramid'
+  },
+  floating: {
+    name: '浮空岛',
+    platforms: [
+      {x: 100, y: 600, w: 250, h: 20, color: '#4a4a6c'},
+      {x: 930, y: 600, w: 250, h: 20, color: '#4a4a6c'},
+      {x: 440, y: 500, w: 400, h: 20, color: '#5a5a7c'},
+      {x: 150, y: 380, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 930, y: 380, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 540, y: 300, w: 200, h: 20, color: '#5a5a7c'},
+      {x: 300, y: 180, w: 150, h: 20, color: '#6a6a8c'},
+      {x: 830, y: 180, w: 150, h: 20, color: '#6a6a8c'},
+    ],
+    spawnPoints: [
+      {x: 225, y: 550}, {x: 1055, y: 550},
+      {x: 640, y: 450}, {x: 640, y: 250},
+    ],
+    bgGradient: ['#1a3a3e', '#0a0a14'], theme: 'floating'
+  },
+  chaos: {
+    name: '混乱',
+    platforms: [
+      {x: 0, y: 680, w: 200, h: 40, color: '#3a3a5c'},
+      {x: 1080, y: 680, w: 200, h: 40, color: '#3a3a5c'},
+      {x: 400, y: 600, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 730, y: 600, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 200, y: 480, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 880, y: 480, w: 200, h: 20, color: '#4a4a6c'},
+      {x: 540, y: 420, w: 200, h: 20, color: '#5a5a7c'},
+      {x: 100, y: 320, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 1030, y: 320, w: 150, h: 20, color: '#4a4a6c'},
+      {x: 400, y: 250, w: 150, h: 20, color: '#5a5a7c'},
+      {x: 730, y: 250, w: 150, h: 20, color: '#5a5a7c'},
+      {x: 565, y: 150, w: 150, h: 20, color: '#6a6a8c'},
+    ],
+    spawnPoints: [
+      {x: 100, y: 600}, {x: 1180, y: 600},
+      {x: 475, y: 550}, {x: 805, y: 550},
+    ],
+    bgGradient: ['#3a1a3e', '#0a0a14'], theme: 'chaos'
+  },
+};
+
+// ==================== 玩家颜色配置 ====================
+const PLAYER_COLORS = [
+  { name: '红方', primary: '#ff2b4a', secondary: '#cc1a3a', dark: '#8a0a1a', light: '#ff6b8a' },
+  { name: '蓝方', primary: '#00d9ff', secondary: '#0099cc', dark: '#005577', light: '#66e6ff' },
+  { name: '绿方', primary: '#2bff88', secondary: '#1acc66', dark: '#0a7733', light: '#66ffaa' },
+  { name: '黄方', primary: '#ffd700', secondary: '#cc9900', dark: '#8a6600', light: '#ffe666' },
+];
+
+// ==================== 默认控制配置 ====================
+const DEFAULT_CONTROLS = [
+  { left: 'KeyA', right: 'KeyD', jump: 'KeyW', shoot: 'KeyF', skill: 'KeyG', down: 'KeyS', label: 'WASD+F/G' },
+  { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', shoot: 'Period', skill: 'Slash', down: 'ArrowDown', label: '方向键+./' },
+  { left: 'KeyF', right: 'KeyH', jump: 'KeyT', shoot: 'Digit5', skill: 'Digit6', down: 'KeyG', label: 'TFH+5/6' },
+  { left: 'KeyJ', right: 'KeyL', jump: 'KeyI', shoot: 'Digit0', skill: 'Minus', down: 'KeyK', label: 'IJL+0/-' },
+];
+let CONTROLS = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+
+// ==================== AI头像加载 ====================
+const AVATARS = { easy: null, normal: null, hard: null, boss: null };
+const DIFF_NAMES = { easy: '简单', normal: '中等', hard: '困难' };
+const DIFF_COLORS = { easy: '#2bff88', normal: '#ffd700', hard: '#ff2b4a' };
+const DIFF_STARS = { easy: 1, normal: 2, hard: 3 };
+
+function loadAvatarImages() {
+  const load = (key, src) => {
+    const img = new Image();
+    img.onload = () => { AVATARS[key] = img; };
+    img.onerror = () => { AVATARS[key] = null; };
+    img.src = src;
+  };
+  load('easy', '1.png');
+  load('normal', '2.png');
+  load('hard', '3.png');
+  load('boss', '3.png');
+}
+
+// ==================== 游戏状态 ====================
+let gameState = {
+  screen: 'mainMenu',
+  mode: 'deathmatch',
+  selectedMap: 'arena',
+  bossDifficulty: 'normal',
+  players: [],
+  bullets: [],
+  particles: [],
+  powerups: [],
+  killLimit: 10,
+  gameRunning: false,
+  paused: false,
+  frameCount: 0,
+  winner: null,
+  teamScores: { red: 0, blue: 0 },
+  survivalWave: 0,
+  ballLightnings: [],
+  ballLightningEnabled: false,
+  pendingBallLightning: [],
+  aiSpawnTimer: 0,
+  firepowerAICount: 0,
+};
+
+let canvas, ctx;
+let keys = {};
+let camera = { x: 0, y: 0, shake: 0 };
+let keyBindingListening = null;
+let entityCounter = 1000;
+
+// ==================== 初始化 ====================
+function init() {
+  canvas = document.getElementById('gameCanvas');
+  ctx = canvas.getContext('2d');
+  canvas.width = CONFIG.CANVAS_WIDTH;
+  canvas.height = CONFIG.CANVAS_HEIGHT;
+  
+  loadAvatarImages();
+  setupMenuParticles();
+  setupPlayerSlots();
+  setupMapCards();
+  setupKeyBindings();
+  setupEventListeners();
+  
+  requestAnimationFrame(gameLoop);
+}
+
+function setupEventListeners() {
+  window.addEventListener('keydown', (e) => {
+    if (keyBindingListening) {
+      e.preventDefault();
+      const { playerIndex, action } = keyBindingListening;
+      CONTROLS[playerIndex][action] = e.code;
+      CONTROLS[playerIndex].label = generateControlLabel(CONTROLS[playerIndex]);
+      keyBindingListening = null;
+      setupKeyBindings();
+      setupPlayerSlots();
+      return;
+    }
+    
+    keys[e.code] = true;
+    if (e.code === 'Escape' && gameState.gameRunning) togglePause();
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+  
+  document.getElementById('gravitySetting').addEventListener('input', (e) => {
+    CONFIG.GRAVITY = parseFloat(e.target.value);
+    document.getElementById('gravityValue').textContent = e.target.value;
+  });
+  document.getElementById('knockbackSetting').addEventListener('input', (e) => {
+    CONFIG.KNOCKBACK_MULTIPLIER = parseFloat(e.target.value);
+    document.getElementById('knockbackValue').textContent = e.target.value;
+  });
+  document.getElementById('ballLightning').addEventListener('change', (e) => {
+    gameState.ballLightningEnabled = e.target.checked;
+  });
+}
+
+function generateControlLabel(controls) {
+  const keyName = (code) => {
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Arrow')) return code.slice(5);
+    if (code.startsWith('Digit')) return code.slice(5);
+    const map = { 'Period': '.', 'Slash': '/', 'Minus': '-', 'Comma': ',', 'Semicolon': ';', 'Quote': "'", 'BracketLeft': '[', 'BracketRight': ']' };
+    return map[code] || code;
+  };
+  return `${keyName(controls.jump)}${keyName(controls.left)}${keyName(controls.right)}+${keyName(controls.shoot)}/${keyName(controls.skill)}`;
+}
+
+// ==================== 键位绑定界面 ====================
+function setupKeyBindings() {
+  const container = document.getElementById('keyBindingsContainer');
+  container.innerHTML = '';
+  
+  const actions = [
+    { key: 'left', label: '左移' },
+    { key: 'right', label: '右移' },
+    { key: 'jump', label: '跳跃' },
+    { key: 'shoot', label: '射击' },
+    { key: 'skill', label: '技能' },
+    { key: 'down', label: '下蹲/格挡' },
+  ];
+  
+  for (let i = 0; i < 4; i++) {
+    const color = PLAYER_COLORS[i];
+    const section = document.createElement('div');
+    section.className = 'mb-6 last:mb-0';
+    section.innerHTML = `
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-6 h-6 rounded" style="background: ${color.primary};"></div>
+        <h3 class="font-game text-white text-lg">玩家 ${i+1} (${color.name})</h3>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+        ${actions.map(a => `
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-gray-300 text-sm">${a.label}</span>
+            <button class="key-bind-btn" data-p="${i}" data-a="${a.key}" onclick="startKeyBinding(${i}, '${a.key}', this)">
+              ${getKeyDisplayName(CONTROLS[i][a.key])}
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(section);
+  }
+}
+
+function getKeyDisplayName(code) {
+  if (!code) return '未设置';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Arrow')) return code.slice(5) + '键';
+  if (code.startsWith('Digit')) return code.slice(5);
+  const map = { 'Period': '.', 'Slash': '/', 'Minus': '-', 'Space': '空格' };
+  return map[code] || code;
+}
+
+function startKeyBinding(playerIndex, action, btn) {
+  keyBindingListening = { playerIndex, action };
+  document.querySelectorAll('.key-bind-btn').forEach(b => b.classList.remove('listening'));
+  btn.classList.add('listening');
+  btn.textContent = '按下按键...';
+}
+
+function resetKeyBindings() {
+  CONTROLS = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+  setupKeyBindings();
+  setupPlayerSlots();
+}
+
+// ==================== 菜单粒子效果 ====================
+let menuParticles = [];
+function setupMenuParticles() {
+  const mc = document.getElementById('menuParticles');
+  const mctx = mc.getContext('2d');
+  mc.width = window.innerWidth;
+  mc.height = window.innerHeight;
+  
+  for (let i = 0; i < 50; i++) {
+    menuParticles.push({
+      x: Math.random() * mc.width, y: Math.random() * mc.height,
+      vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5,
+      size: Math.random() * 3 + 1,
+      color: ['#6c2bd9', '#00d9ff', '#ff6b1a'][Math.floor(Math.random() * 3)],
+      alpha: Math.random() * 0.5 + 0.2,
+    });
+  }
+  
+  function animateMenu() {
+    mctx.clearRect(0, 0, mc.width, mc.height);
+    menuParticles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = mc.width;
+      if (p.x > mc.width) p.x = 0;
+      if (p.y < 0) p.y = mc.height;
+      if (p.y > mc.height) p.y = 0;
+      mctx.globalAlpha = p.alpha;
+      mctx.fillStyle = p.color;
+      mctx.beginPath();
+      mctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx_fill(mctx, p.size);
+    });
+    mctx.globalAlpha = 1;
+    requestAnimationFrame(animateMenu);
+  }
+  animateMenu();
+}
+function ctx_fill(m, s) { m.beginPath(); m.arc(0, 0, s, 0, Math.PI * 2); m.fill(); }
+
+// ==================== AI创建工厂 ====================
+function createAI(opts) {
+  const defaults = {
+    id: ++entityCounter,
+    x: 0, y: 0, vx: 0, vy: 0, w: 30, h: 50,
+    color: { name: 'AI', primary: '#ff8800', secondary: '#cc6600', dark: '#884400', light: '#ffbb66' },
+    controls: null, type: 'ai_normal',
+    weapon: 'pistol', weaponAmmo: Infinity,
+    skill: 'tripleJump', skillCooldown: 0,
+    facing: 1, onGround: false, jumpsLeft: 2, maxJumps: 2,
+    health: 100, maxHealth: 100, kills: 0, deaths: 0,
+    alive: true, respawnTimer: 0, shootCooldown: 40,
+    invincible: 60, shieldActive: 0, speedBoostActive: 0, jetpackActive: 0,
+    isAI: true, aiDifficulty: 'normal', aiTarget: null, aiDecisionTimer: 0,
+    name: 'AI', team: 'enemy',
+    stealth: false, stealthVisible: 0, stealthDisabled: false,
+    stunTimer: 0, chargeAmount: 0, isCharging: false,
+    umbrellaShield: 0, stuckKnives: [],
+    poisonTimer: 0, poisonSource: null,
+    noRespawn: false, flying: false, jetpackFuel: 0, canFly: false,
+    laserFiring: 0, laserOrigin: null, laserEnd: 0,
+    lastHitBy: null, lastHitTime: -9999,
+    launchedTimer: 0,
+    lives: undefined, eliminated: false,
+  };
+  const p = Object.assign(defaults, opts);
+  const wc = WEAPONS[p.weapon];
+  p.weaponAmmo = wc.ammo;
+  if (wc.stealth) p.stealth = true;
+  if (wc.shield) p.umbrellaShield = Math.floor(p.maxHealth * wc.shieldMultiplier);
+  if (p.skill === 'tripleJump') p.maxJumps = 3;
+  p.jumpsLeft = p.maxJumps;
+  return p;
+}
+
+function randomWeaponKey() {
+  const keys = Object.keys(WEAPONS).filter(k => k !== 'unarmed');
+  return keys[Math.floor(Math.random() * keys.length)];
+}
+
+// ==================== 玩家槽位 ====================
+function setupPlayerSlots() {
+  const container = document.getElementById('playerSlots');
+  container.innerHTML = '';
+  
+  for (let i = 0; i < 4; i++) {
+    const color = PLAYER_COLORS[i];
+    const controls = CONTROLS[i];
+    const slot = document.createElement('div');
+    slot.className = `player-slot glass rounded-xl p-4 border-2 ${i < 2 ? 'border-gun-cyan' : 'border-transparent'}`;
+    slot.id = `slot${i}`;
+    slot.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg" style="background: ${color.primary}; box-shadow: 0 0 10px ${color.primary}80;"></div>
+          <span class="font-game text-white text-lg">玩家 ${i+1}</span>
+          <span class="text-gray-400 text-sm">(${color.name})</span>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="player${i}Active" ${i < 2 ? 'checked' : ''} class="w-4 h-4 accent-gun-cyan">
+          <span class="text-gray-300 text-sm">参与</span>
+        </label>
+      </div>
+      
+      <div class="mb-3">
+        <label class="text-gray-400 text-xs block mb-1">类型</label>
+        <select id="player${i}Type" class="w-full bg-black/40 text-white rounded-lg px-3 py-1.5 text-sm border border-white/10">
+          <option value="human">人类</option>
+          <option value="ai_easy" ${i >= 2 ? 'selected' : ''}>AI (简单)</option>
+          <option value="ai_normal">AI (普通)</option>
+          <option value="ai_hard">AI (困难)</option>
+        </select>
+      </div>
+      
+      <div class="mb-3">
+        <label class="text-gray-400 text-xs block mb-1">武器</label>
+        <select id="player${i}Weapon" class="w-full bg-black/40 text-white rounded-lg px-3 py-1.5 text-sm border border-white/10">
+          ${Object.entries(WEAPONS).filter(([k]) => k !== 'unarmed').map(([key, w]) => 
+            `<option value="${key}" ${key === 'pistol' ? 'selected' : ''}>${w.name} - ${w.desc}</option>`
+          ).join('')}
+        </select>
+      </div>
+      
+      <div class="mb-3">
+        <label class="text-gray-400 text-xs block mb-1">技能</label>
+        <select id="player${i}Skill" class="w-full bg-black/40 text-white rounded-lg px-3 py-1.5 text-sm border border-white/10">
+          ${Object.entries(SKILLS).map(([key, s]) => 
+            `<option value="${key}" ${key === 'tripleJump' ? 'selected' : ''}>${s.name} - ${s.desc}</option>`
+          ).join('')}
+        </select>
+      </div>
+      
+      <div class="text-xs text-gray-500">
+        <i class="fas fa-keyboard mr-1"></i> ${controls.label}
+      </div>
+    `;
+    container.appendChild(slot);
+  }
+}
+
+// ==================== 地图选择卡片 ====================
+function setupMapCards() {
+  const container = document.getElementById('mapGrid');
+  container.innerHTML = '';
+  
+  Object.entries(MAPS).forEach(([key, map]) => {
+    const card = document.createElement('div');
+    card.className = `map-card glass rounded-xl p-4 border-2 ${key === 'arena' ? 'selected border-gun-yellow' : 'border-transparent'}`;
+    card.onclick = () => selectMap(key);
+    card.id = `map_${key}`;
+    
+    let preview = '';
+    map.platforms.forEach(p => {
+      const px = (p.x / CONFIG.CANVAS_WIDTH) * 100;
+      const py = (p.y / CONFIG.CANVAS_HEIGHT) * 100;
+      const pw = (p.w / CONFIG.CANVAS_WIDTH) * 100;
+      const ph = (p.h / CONFIG.CANVAS_HEIGHT) * 100;
+      preview += `<div style="position:absolute;left:${px}%;top:${py}%;width:${pw}%;height:${ph}%;background:${p.color};border-radius:2px;"></div>`;
+    });
+    
+    card.innerHTML = `
+      <div class="relative w-full h-32 rounded-lg overflow-hidden mb-3" style="background: linear-gradient(135deg, ${map.bgGradient[0]}, ${map.bgGradient[1]});">
+        ${preview}
+      </div>
+      <h3 class="font-game text-white text-center">${map.name}</h3>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function selectMap(mapKey) {
+  gameState.selectedMap = mapKey;
+  document.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById(`map_${mapKey}`).classList.add('selected');
+}
+
+// ==================== 屏幕切换 ====================
+function showScreen(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+  gameState.screen = screenId;
+}
+
+function selectMode(mode) {
+  gameState.mode = mode;
+  document.getElementById('modeLabel').textContent = MODE_NAMES[mode];
+  document.getElementById('bossDifficultyRow').classList.toggle('hidden', mode !== 'bossBattle');
+  showScreen('playerSetup');
+}
+
+function goToMapSelect() { showScreen('mapSelect'); }
+
+// ==================== 游戏开始 ====================
+function startGame() {
+  gameState.killLimit = parseInt(document.getElementById('killLimit').value);
+  gameState.ballLightningEnabled = document.getElementById('ballLightning').checked;
+  gameState.bossDifficulty = document.getElementById('bossDifficulty').value;
+  
+  gameState.players = [];
+  entityCounter = 1000;
+  for (let i = 0; i < 4; i++) {
+    const active = document.getElementById(`player${i}Active`).checked;
+    if (!active) continue;
+    
+    const type = document.getElementById(`player${i}Type`).value;
+    const weapon = document.getElementById(`player${i}Weapon`).value;
+    const skill = document.getElementById(`player${i}Skill`).value;
+    
+    const color = PLAYER_COLORS[i];
+    const map = MAPS[gameState.selectedMap];
+    const spawn = map.spawnPoints[i % map.spawnPoints.length];
+    const weaponConfig = WEAPONS[weapon];
+    const maxJumps = skill === 'tripleJump' ? 3 : 2;
+    
+    let team = null;
+    if (gameState.mode === 'team' || gameState.mode === 'airBattle') team = i < 2 ? 'red' : 'blue';
+    if (gameState.mode === 'infiniteFirepower' || gameState.mode === 'bossBattle') team = 'human';
+    
+    gameState.players.push({
+      id: i,
+      x: spawn.x, y: spawn.y, vx: 0, vy: 0,
+      w: 30, h: 50,
+      color: color, controls: CONTROLS[i],
+      type: type,
+      weapon: weapon, weaponAmmo: weaponConfig.ammo, originalWeapon: weapon,
+      skill: skill, skillCooldown: 0,
+      facing: i % 2 === 0 ? 1 : -1,
+      onGround: false, jumpsLeft: maxJumps, maxJumps: maxJumps,
+      health: 100, maxHealth: 100,
+      kills: 0, deaths: 0,
+      alive: true, respawnTimer: 0, shootCooldown: 0,
+      invincible: 0, shieldActive: 0, speedBoostActive: 0, jetpackActive: 0,
+      isAI: type !== 'human',
+      aiDifficulty: type.replace('ai_', ''),
+      aiTarget: null, aiDecisionTimer: 0,
+      name: `P${i+1}`,
+      team: team,
+      lives: gameState.mode === 'lastMan' ? CONFIG.LAST_MAN_LIVES : 
+             (gameState.mode === 'bossBattle' ? 5 : undefined),
+      eliminated: false,
+      stealth: weaponConfig.stealth || false,
+      stealthVisible: 0, stealthDisabled: false,
+      stunTimer: 0, chargeAmount: 0, isCharging: false,
+      umbrellaShield: weaponConfig.shield ? Math.floor(100 * weaponConfig.shieldMultiplier) : 0,
+      stuckKnives: [],
+      poisonTimer: 0, poisonSource: null,
+      flying: false,
+      canFly: gameState.mode === 'airBattle',
+      jetpackFuel: gameState.mode === 'airBattle' ? 100 : 0,
+      laserFiring: 0, laserOrigin: null, laserEnd: 0,
+      lastHitBy: null, lastHitTime: -9999,
+      launchedTimer: 0,
+    });
+  }
+  
+  gameState.bullets = [];
+  gameState.particles = [];
+  gameState.powerups = [];
+  gameState.teamScores = { red: 0, blue: 0 };
+  gameState.gameRunning = true;
+  gameState.paused = false;
+  gameState.winner = null;
+  gameState.frameCount = 0;
+  gameState.ballLightnings = [];
+  gameState.pendingBallLightning = [];
+  gameState.firepowerAICount = 0;
+  
+  if (gameState.mode === 'survival') {
+    gameState.survivalWave = 0;
+    spawnSurvivalWave();
+  }
+  if (gameState.mode === 'infiniteFirepower') {
+    gameState.aiSpawnTimer = 240;
+  }
+  if (gameState.mode === 'bossBattle') {
+    spawnBoss();
+  }
+  
+  setupGameHUD();
+  showScreen('gameScreen');
+  document.getElementById('gameModeText').textContent = MODE_NAMES[gameState.mode];
+  updateScoreDisplay();
+}
+
+function spawnSurvivalWave() {
+  gameState.survivalWave++;
+  const enemyCount = 2 + gameState.survivalWave;
+  const map = MAPS[gameState.selectedMap];
+  
+  for (let i = 0; i < enemyCount; i++) {
+    const spawn = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+    const skills = Object.keys(SKILLS);
+    const skill = skills[Math.floor(Math.random() * skills.length)];
+    
+    gameState.players.push(createAI({
+      x: spawn.x, y: spawn.y,
+      weapon: randomWeaponKey(),
+      skill: skill,
+      health: 80, maxHealth: 80,
+      type: 'ai_hard', aiDifficulty: 'hard',
+      name: `AI-${i+1}`, team: 'enemy',
+      isSurvivalEnemy: true, noRespawn: true,
+    }));
+  }
+}
+
+// ==================== 无限火力 ====================
+function updateInfiniteFirepower() {
+  gameState.aiSpawnTimer--;
+  if (gameState.aiSpawnTimer <= 0) {
+    const aliveAIs = gameState.players.filter(p => p.team === 'enemy' && p.alive).length;
+    if (aliveAIs < 10) spawnFirepowerAI();
+    gameState.aiSpawnTimer = 420 + Math.random() * 300; // 7~12秒
+  }
+}
+
+function spawnFirepowerAI() {
+  const map = MAPS[gameState.selectedMap];
+  const spawn = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+  const diffs = ['easy', 'normal', 'hard'];
+  const diff = diffs[Math.floor(Math.random() * diffs.length)];
+  const skills = Object.keys(SKILLS);
+  const skill = skills[Math.floor(Math.random() * skills.length)];
+  gameState.firepowerAICount++;
+  
+  gameState.players.push(createAI({
+    x: spawn.x, y: spawn.y,
+    weapon: randomWeaponKey(),
+    skill: skill,
+    aiDifficulty: diff, type: 'ai_' + diff,
+    name: `AI-${gameState.firepowerAICount}`,
+    team: 'enemy', noRespawn: true,
+    isFirepowerAI: true,
+  }));
+  
+  addKillFeed('系统', `${DIFF_NAMES[diff]}AI-${gameState.firepowerAICount} 出现！`, DIFF_COLORS[diff], '#aaa');
+  createSpawnPortalEffect(spawn.x, spawn.y);
+}
+
+// ==================== 封魔之地（首领） ====================
+const BOSS_STATS = {
+  easy:   { hp: 1500, speed: 3.4, fireRate: 100, dmg: 6,  acc: 0.5 },
+  normal: { hp: 2500, speed: 4.4, fireRate: 70,  dmg: 8,  acc: 0.7 },
+  hard:   { hp: 4000, speed: 5.4, fireRate: 50,  dmg: 10, acc: 0.9 },
+};
+
+function spawnBoss() {
+  const stats = BOSS_STATS[gameState.bossDifficulty];
+  const map = MAPS[gameState.selectedMap];
+  const spawn = map.spawnPoints[1];
+  
+  gameState.players.push(createAI({
+    id: ++entityCounter,
+    isBoss: true,
+    x: spawn.x, y: spawn.y - 40,
+    w: 60, h: 90,
+    color: { name: '首领', primary: '#ff2b4a', secondary: '#8a0a1a', dark: '#4a000a', light: '#ff6b8a' },
+    type: 'ai_' + gameState.bossDifficulty,
+    aiDifficulty: gameState.bossDifficulty,
+    weapon: 'rocketLauncher',
+    health: stats.hp, maxHealth: stats.hp,
+    maxJumps: 1, jumpsLeft: 1,
+    name: '首领', team: 'enemy',
+    maxSpeed: stats.speed,
+    bossStats: stats,
+    summonIndex: 0,
+    knockbackResist: 0.15,
+    shootCooldown: 90,
+    invincible: 90,
+  }));
+  
+  addKillFeed('系统', `${DIFF_NAMES[gameState.bossDifficulty]}首领降临！`, '#ff2b4a', '#ffd700');
+  createSpawnPortalEffect(spawn.x, spawn.y - 40);
+}
+
+const BOSS_SUMMON_THRESHOLDS = [0.85, 0.70, 0.55, 0.40, 0.25, 0.10];
+
+function checkBossSummons(boss) {
+  if (!boss.alive) return;
+  const pct = boss.health / boss.maxHealth;
+  while (boss.summonIndex < BOSS_SUMMON_THRESHOLDS.length && pct <= BOSS_SUMMON_THRESHOLDS[boss.summonIndex]) {
+    boss.summonIndex++;
+    summonMinion(boss);
+  }
+}
+
+function summonMinion(boss) {
+  const map = MAPS[gameState.selectedMap];
+  const spawn = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+  const skills = Object.keys(SKILLS);
+  
+  gameState.players.push(createAI({
+    x: spawn.x, y: spawn.y,
+    weapon: randomWeaponKey(),
+    skill: skills[Math.floor(Math.random() * skills.length)],
+    aiDifficulty: boss.aiDifficulty, type: 'ai_' + boss.aiDifficulty,
+    name: `仆从-${boss.summonIndex}`, team: 'enemy',
+    isMinion: true, noRespawn: true,
+  }));
+  
+  addKillFeed('首领', '召唤了一个仆从！', '#ff2b4a', '#888');
+  createSpawnPortalEffect(spawn.x, spawn.y);
+}
+
+function bossShoot(boss, target) {
+  const stats = boss.bossStats;
+  const cx = boss.x + boss.w/2, cy = boss.y + boss.h/2;
+  const tx = target.x + target.w/2, ty = target.y + target.h/2;
+  const baseAngle = Math.atan2(ty - cy, tx - cx);
+  const shots = boss.aiDifficulty === 'hard' ? 5 : 3;
+  const spread = (1 - stats.acc) * 0.6 + 0.18;
+  
+  for (let i = 0; i < shots; i++) {
+    const a = baseAngle + (i - (shots-1)/2) * spread * 0.5 + (Math.random()-0.5) * spread * 0.4;
+    gameState.bullets.push({
+      x: cx, y: cy,
+      vx: Math.cos(a) * 10, vy: Math.sin(a) * 10,
+      damage: stats.dmg, knockback: 8, size: 5, color: '#ff2b4a',
+      ownerId: boss.id, owner: boss, life: 150,
+      explosive: false, homing: false, piercing: false,
+      hitPlayers: new Set(), trail: [], gravity: 0,
+      poison: false, stickToTarget: false,
+    });
+  }
+  createMuzzleFlash(boss, WEAPONS.rocketLauncher);
+  camera.shake = Math.min(camera.shake + 3, 10);
+}
+
+// ==================== HUD设置 ====================
+function isHumanSide(p) {
+  return p.team !== 'enemy' && !p.isBoss && !p.isSurvivalEnemy;
+}
+
+function setupGameHUD() {
+  const container = document.getElementById('playerHUDs');
+  container.innerHTML = '';
+  
+  gameState.players.filter(isHumanSide).forEach(player => {
+    const hud = document.createElement('div');
+    hud.className = 'glass rounded-lg p-3 min-w-[180px]';
+    hud.id = `hud_${player.id}`;
+    hud.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-4 h-4 rounded" style="background: ${player.color.primary};"></div>
+        <span class="font-game text-white text-sm">${player.name}</span>
+        <span class="text-gray-400 text-xs ml-auto">${player.type === 'human' ? '人类' : 'AI'}</span>
+      </div>
+      <div class="space-y-1">
+        <div class="flex items-center gap-1">
+          <i class="fas fa-heart text-gun-red text-xs w-4"></i>
+          <div class="hud-bar flex-1">
+            <div class="hud-fill" id="health_${player.id}" style="width: 100%; background: linear-gradient(90deg, #ff2b4a, #ff6b1a);"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <i class="fas fa-gun text-gun-yellow text-xs w-4"></i>
+          <span class="text-gray-300 text-xs" id="weapon_${player.id}">${WEAPONS[player.weapon].name}</span>
+          <span class="text-gray-400 text-xs ml-auto" id="ammo_${player.id}">∞</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <i class="fas fa-bolt text-gun-cyan text-xs w-4"></i>
+          <div class="hud-bar flex-1">
+            <div class="hud-fill" id="skill_${player.id}" style="width: 100%; background: linear-gradient(90deg, #00d9ff, #6c2bd9);"></div>
+          </div>
+        </div>
+        ${player.canFly ? `
+        <div class="flex items-center gap-1">
+          <i class="fas fa-fire text-gun-orange text-xs w-4"></i>
+          <div class="hud-bar flex-1">
+            <div class="hud-fill" id="fuel_${player.id}" style="width: 100%; background: linear-gradient(90deg, #ff6b1a, #ffd700);"></div>
+          </div>
+        </div>` : ''}
+        <div class="flex justify-between text-xs">
+          <span class="text-gun-green"><i class="fas fa-skull"></i> <span id="kills_${player.id}">0</span></span>
+          <span class="text-gun-red text-xs" id="lives_${player.id}"></span>
+          <span class="text-gray-500"><i class="fas fa-redo"></i> <span id="deaths_${player.id}">0</span></span>
+        </div>
+      </div>
+    `;
+    container.appendChild(hud);
+  });
+  
+  if (gameState.mode === 'bossBattle' || gameState.mode === 'infiniteFirepower') {
+    container.style.justifyContent = 'center';
+  }
+}
+
+function updateHUD() {
+  gameState.players.filter(isHumanSide).forEach(player => {
+    const healthBar = document.getElementById(`health_${player.id}`);
+    if (healthBar) healthBar.style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
+    
+    const skillBar = document.getElementById(`skill_${player.id}`);
+    if (skillBar) {
+      const skill = SKILLS[player.skill];
+      if (skill.passive) {
+        skillBar.style.width = '100%';
+        skillBar.style.background = skill.name === '自爆' ?
+          'linear-gradient(90deg, #ff2b4a, #ff6b1a)' : 'linear-gradient(90deg, #2bff88, #00d9ff)';
+      } else {
+        const pct = player.skillCooldown > 0 ? (1 - player.skillCooldown / skill.cooldown) * 100 : 100;
+        skillBar.style.width = `${pct}%`;
+        skillBar.style.background = player.skillCooldown > 0 ? 
+          'linear-gradient(90deg, #666, #999)' : 'linear-gradient(90deg, #00d9ff, #6c2bd9)';
+      }
+    }
+    
+    const ammoEl = document.getElementById(`ammo_${player.id}`);
+    if (ammoEl) {
+      const weapon = WEAPONS[player.weapon];
+      ammoEl.textContent = weapon.ammo === Infinity ? '∞' : player.weaponAmmo;
+    }
+    const weaponEl = document.getElementById(`weapon_${player.id}`);
+    if (weaponEl) weaponEl.textContent = WEAPONS[player.weapon].name;
+    
+    const fuelBar = document.getElementById(`fuel_${player.id}`);
+    if (fuelBar) fuelBar.style.width = `${player.jetpackFuel}%`;
+    
+    const livesEl = document.getElementById(`lives_${player.id}`);
+    if (livesEl) livesEl.textContent = player.lives !== undefined ? `♥${Math.max(0, player.lives)}` : '';
+    
+    const killsEl = document.getElementById(`kills_${player.id}`);
+    if (killsEl) killsEl.textContent = player.kills;
+    const deathsEl = document.getElementById(`deaths_${player.id}`);
+    if (deathsEl) deathsEl.textContent = player.deaths;
+  });
+  
+  const bar = document.getElementById('bossHealthBar');
+  const boss = gameState.players.find(p => p.isBoss);
+  if (bar) {
+    if (gameState.mode === 'bossBattle' && boss) {
+      bar.classList.remove('hidden');
+      document.getElementById('bossHealthFill').style.width = `${Math.max(0, (boss.health / boss.maxHealth) * 100)}%`;
+      document.getElementById('bossHealthText').textContent = `${Math.max(0, Math.ceil(boss.health))} / ${boss.maxHealth}`;
+    } else {
+      bar.classList.add('hidden');
+    }
+  }
+}
+
+function getHumanKills() {
+  return gameState.players.filter(p => p.team === 'human').reduce((s, p) => s + p.kills, 0);
+}
+
+function updateScoreDisplay() {
+  const scoreEl = document.getElementById('gameScoreText');
+  if (gameState.mode === 'deathmatch') {
+    const sorted = [...gameState.players].sort((a, b) => b.kills - a.kills);
+    if (sorted.length > 0) scoreEl.textContent = `目标: ${gameState.killLimit} 击杀 | ${sorted[0].name} 领先 (${sorted[0].kills})`;
+  } else if (gameState.mode === 'team' || gameState.mode === 'airBattle') {
+    scoreEl.textContent = `红队 ${gameState.teamScores.red} - ${gameState.teamScores.blue} 蓝队 | 目标: ${gameState.killLimit}`;
+  } else if (gameState.mode === 'lastMan') {
+    const contenders = gameState.players.filter(p => !p.eliminated);
+    scoreEl.textContent = `每人 ${CONFIG.LAST_MAN_LIVES} 命 | 存活: ${contenders.length} 人`;
+  } else if (gameState.mode === 'survival') {
+    const alive = gameState.players.filter(p => !p.isSurvivalEnemy && p.alive).length;
+    scoreEl.textContent = `第 ${gameState.survivalWave} 波 | 存活: ${alive} | 敌人: ${gameState.players.filter(p => p.isSurvivalEnemy && p.alive).length}`;
+  } else if (gameState.mode === 'infiniteFirepower') {
+    const aliveAIs = gameState.players.filter(p => p.team === 'enemy' && p.alive).length;
+    scoreEl.textContent = `人类击杀: ${getHumanKills()} / ${gameState.killLimit} | 场上AI: ${aliveAIs} | 下一波: ${Math.ceil(gameState.aiSpawnTimer / 60)}秒`;
+  } else if (gameState.mode === 'bossBattle') {
+    const boss = gameState.players.find(p => p.isBoss);
+    const bossPct = boss ? Math.max(0, Math.ceil(boss.health / boss.maxHealth * 100)) : 0;
+    scoreEl.textContent = `首领血量: ${bossPct}% | 仆从: ${gameState.players.filter(p => p.isMinion && p.alive).length}`;
+  }
+}
+
+// ==================== 游戏主循环 ====================
+function gameLoop() {
+  if (gameState.gameRunning && !gameState.paused) {
+    update();
+    render();
+    gameState.frameCount++;
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+function update() {
+  for (let i = gameState.pendingBallLightning.length - 1; i >= 0; i--) {
+    const pbl = gameState.pendingBallLightning[i];
+    pbl.timer--;
+    if (pbl.timer <= 0) {
+      spawnBallLightning(pbl.x, pbl.y);
+      gameState.pendingBallLightning.splice(i, 1);
+    }
+  }
+  
+  for (let i = gameState.ballLightnings.length - 1; i >= 0; i--) {
+    updateBallLightning(gameState.ballLightnings[i], i);
+  }
+  
+  gameState.players.forEach(player => {
+    if (!player.alive) {
+      if (player.noRespawn) return;
+      player.respawnTimer--;
+      if (player.respawnTimer <= 0) respawnPlayer(player);
+      return;
+    }
+    
+    if (player.stunTimer > 0) {
+      player.stunTimer--;
+      updatePlayerPhysics(player);
+      updatePlayerStatus(player);
+      return;
+    }
+    
+    if (player.laserFiring > 0) {
+      player.laserFiring--;
+      emitLaserBeam(player);
+    } else if (player.isBoss) {
+      updateBossAI(player);
+    } else if (player.isAI) {
+      updateAI(player);
+    } else {
+      updatePlayerInput(player);
+    }
+    
+    updatePlayerPhysics(player);
+    updatePlayerSkills(player);
+    updatePlayerStatus(player);
+    if (player.isBoss) checkBossSummons(player);
+  });
+  
+  for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+    updateBullet(gameState.bullets[i], i);
+  }
+  
+  for (let i = gameState.particles.length - 1; i >= 0; i--) {
+    const p = gameState.particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.2;
+    p.life--;
+    p.alpha = p.life / p.maxLife;
+    if (p.life <= 0) gameState.particles.splice(i, 1);
+  }
+  
+  for (let i = gameState.powerups.length - 1; i >= 0; i--) {
+    const pu = gameState.powerups[i];
+    pu.bobOffset += 0.05;
+    pu.life--;
+    
+    gameState.players.forEach(player => {
+      if (!player.alive) return;
+      const dx = player.x + player.w/2 - pu.x;
+      const dy = player.y + player.h/2 - pu.y;
+      if (Math.sqrt(dx*dx + dy*dy) < 30) {
+        applyPowerup(player, pu);
+        gameState.powerups.splice(i, 1);
+        createPickupEffect(pu.x, pu.y, pu.color);
+      }
+    });
+    
+    if (pu.life <= 0) gameState.powerups.splice(i, 1);
+  }
+  
+  if (document.getElementById('weaponDrop')?.checked !== false && Math.random() < 0.003) {
+    spawnPowerup();
+  }
+  
+  if (gameState.mode === 'survival') {
+    const enemiesAlive = gameState.players.filter(p => p.isSurvivalEnemy && p.alive).length;
+    if (enemiesAlive === 0) {
+      gameState.players = gameState.players.filter(p => !p.isSurvivalEnemy || p.alive);
+      spawnSurvivalWave();
+      addKillFeed('系统', `第 ${gameState.survivalWave} 波来袭！`, '#ffd700', '#aaa');
+    }
+    
+    const playersAlive = gameState.players.filter(p => !p.isSurvivalEnemy && p.alive).length;
+    if (playersAlive === 0) endGame(`坚持到了第 ${gameState.survivalWave} 波`);
+  }
+  
+  if (gameState.mode === 'infiniteFirepower') {
+    updateInfiniteFirepower();
+  }
+  
+  checkWinCondition();
+  
+  if (gameState.frameCount % 3 === 0) {
+    updateHUD();
+    updateScoreDisplay();
+  }
+  
+  if (camera.shake > 0) camera.shake *= 0.9;
+}
+
+// ==================== 敌我判定 ====================
+function areEnemies(a, b) {
+  if (!a || !b) return true;
+  if (a.team && b.team) return a.team !== b.team;
+  if (a.team || b.team) return true;
+  return true;
+}
+
+// ==================== 边缘安全检测（防止AI掉落） ====================
+function hasGroundAhead(player, dir) {
+  const map = MAPS[gameState.selectedMap];
+  const probeX = player.x + player.w/2 + dir * (player.w/2 + 14);
+  const feetY = player.y + player.h;
+  for (const pl of map.platforms) {
+    if (probeX >= pl.x && probeX <= pl.x + pl.w && feetY >= pl.y - 6 && feetY <= pl.y + 26) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ==================== 球状闪电 ====================
+function spawnBallLightning(x, y) {
+  const angle = Math.random() * Math.PI * 2;
+  const speed = 6;
+  gameState.ballLightnings.push({
+    x: x || Math.random() * CONFIG.CANVAS_WIDTH,
+    y: y || Math.random() * (CONFIG.CANVAS_HEIGHT - 200) + 100,
+    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+    radius: 15, life: CONFIG.BALL_LIGHTNING_DURATION,
+    maxLife: CONFIG.BALL_LIGHTNING_DURATION, pulsePhase: 0,
+  });
+  addKillFeed('系统', '球状闪电出现！', '#00d9ff', '#aaa');
+}
+
+function updateBallLightning(bl, index) {
+  bl.x += bl.vx; bl.y += bl.vy;
+  bl.life--;
+  bl.pulsePhase += 0.1;
+  
+  if (bl.x - bl.radius < 0) { bl.x = bl.radius; bl.vx = Math.abs(bl.vx); }
+  if (bl.x + bl.radius > CONFIG.CANVAS_WIDTH) { bl.x = CONFIG.CANVAS_WIDTH - bl.radius; bl.vx = -Math.abs(bl.vx); }
+  if (bl.y - bl.radius < 0) { bl.y = bl.radius; bl.vy = Math.abs(bl.vy); }
+  if (bl.y + bl.radius > CONFIG.CANVAS_HEIGHT) { bl.y = CONFIG.CANVAS_HEIGHT - bl.radius; bl.vy = -Math.abs(bl.vy); }
+  
+  gameState.players.forEach(player => {
+    if (!player.alive) return;
+    const dx = player.x + player.w/2 - bl.x;
+    const dy = player.y + player.h/2 - bl.y;
+    if (Math.sqrt(dx*dx + dy*dy) < bl.radius + 20) {
+      killPlayer(player, null, '被球状闪电击中');
+      gameState.ballLightnings.splice(index, 1);
+      createExplosion(bl.x, bl.y, 60, null, 0, 0);
+    }
+  });
+  
+  if (bl.life <= 0) gameState.ballLightnings.splice(index, 1);
+}
+
+// ==================== 玩家状态更新（毒素/隐身/飞刀） ====================
+function updatePlayerStatus(player) {
+  if (player.stealth && !player.stealthDisabled && player.stealthVisible > 0 && player.stealthVisible < 999999) {
+    player.stealthVisible--;
+  }
+  
+  // 中毒：持续扣血（记录最后攻击者，可归属掉落击杀）
+  if (player.poisonTimer > 0) {
+    player.poisonTimer--;
+    if (gameState.frameCount % 20 === 0) {
+      if (player.poisonSource) {
+        player.lastHitBy = player.poisonSource;
+        player.lastHitTime = gameState.frameCount;
+      }
+      player.health -= 1;
+      if (player.health <= 0) killPlayer(player, player.poisonSource, '中毒身亡');
+    }
+    if (gameState.frameCount % 8 === 0) {
+      gameState.particles.push({
+        x: player.x + Math.random() * player.w,
+        y: player.y + Math.random() * player.h,
+        vx: (Math.random() - 0.5) * 0.5, vy: -Math.random() * 1.5 - 0.5,
+        size: Math.random() * 3 + 1.5,
+        color: '#2bff88', life: 25, maxLife: 25, alpha: 0.8, type: 'circle',
+      });
+    }
+  }
+  
+  // 插在身上的飞刀持续伤害（同样记录攻击者）
+  for (let i = player.stuckKnives.length - 1; i >= 0; i--) {
+    const knife = player.stuckKnives[i];
+    knife.duration--;
+    if (knife.duration % 30 === 0) {
+      if (knife.owner) {
+        player.lastHitBy = knife.owner;
+        player.lastHitTime = gameState.frameCount;
+      }
+      player.health -= knife.damage;
+      if (player.health <= 0) killPlayer(player, knife.owner, '被飞刀放血致死');
+    }
+    if (knife.duration <= 0) player.stuckKnives.splice(i, 1);
+  }
+}
+
+function effectiveMaxJumps(player) {
+  let mj = player.maxJumps;
+  if (player.poisonTimer > 0) mj = Math.min(mj, 2);
+  return mj;
+}
+
+// ==================== 玩家输入 ====================
+function updatePlayerInput(player) {
+  const c = player.controls;
+  player.flying = false;
+  
+  if (keys[c.left]) {
+    player.vx -= player.onGround ? 1.2 : 0.8;
+    player.facing = -1;
+  }
+  if (keys[c.right]) {
+    player.vx += player.onGround ? 1.2 : 0.8;
+    player.facing = 1;
+  }
+  
+  if (keys[c.jump] && player.jumpsLeft > 0 && !player.jumpHeld) {
+    player.vy = -CONFIG.JUMP_POWER;
+    player.jumpsLeft--;
+    player.jumpHeld = true;
+    createJumpParticles(player);
+  }
+  if (!keys[c.jump]) player.jumpHeld = false;
+  
+  if (player.canFly && !player.onGround && keys[c.jump] && player.jetpackFuel > 0) {
+    player.vy -= 0.6;
+    if (player.vy < -7) player.vy = -7;
+    player.jetpackFuel -= 0.8;
+    player.flying = true;
+    createJetpackParticles(player);
+  }
+  
+  if (player.jetpackActive > 0 && keys[c.jump]) {
+    player.vy = Math.max(player.vy - 0.8, -8);
+    createJetpackParticles(player);
+  }
+  
+  const weapon = WEAPONS[player.weapon];
+  if (weapon.chargeable) {
+    if (keys[c.shoot]) {
+      player.isCharging = true;
+      player.chargeAmount = Math.min(player.chargeAmount + 1, weapon.maxCharge);
+    } else if (player.isCharging) {
+      if (player.shootCooldown <= 0) shoot(player);
+      player.isCharging = false;
+      player.chargeAmount = 0;
+    }
+  } else {
+    if (keys[c.shoot] && player.shootCooldown <= 0) shoot(player);
+  }
+  
+  if (keys[c.skill] && player.skillCooldown <= 0 && !player.skillHeld) {
+    useSkill(player);
+    player.skillHeld = true;
+  }
+  if (!keys[c.skill]) player.skillHeld = false;
+  
+  player.blocking = keys[c.down] && player.onGround;
+}
+
+// ==================== AI逻辑（含防坠落） ====================
+function updateAI(player) {
+  const difficulty = player.aiDifficulty;
+  const accuracy = difficulty === 'easy' ? 0.3 : difficulty === 'normal' ? 0.6 : 0.9;
+  const aggression = difficulty === 'easy' ? 0.3 : difficulty === 'normal' ? 0.6 : 0.9;
+  
+  player.flying = false;
+  player.aiDecisionTimer--;
+  
+  if (!player.aiTarget || !player.aiTarget.alive || player.aiDecisionTimer <= 0) {
+    const enemies = gameState.players.filter(p => 
+      p.alive && p.id !== player.id && areEnemies(player, p) && !p.isBoss
+    );
+    if (enemies.length > 0) {
+      let closest = enemies[0], minDist = Infinity;
+      enemies.forEach(e => {
+        const dx = e.x - player.x, dy = e.y - player.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < minDist) { minDist = dist; closest = e; }
+      });
+      player.aiTarget = closest;
+      player.aiDecisionTimer = 60 + Math.random() * 60;
+    }
+  }
+  
+  const target = player.aiTarget;
+  if (!target) return;
+  
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  
+  player.facing = dx > 0 ? 1 : -1;
+  
+  const weapon = WEAPONS[player.weapon];
+  const idealRange = weapon.melee ? 50 : (weapon.bulletSpeed > 15 || weapon.laserBeam) ? 400 : 250;
+  
+  // ===== 防坠落移动逻辑 =====
+  let wantMove = 0;
+  if (dist > idealRange + 50) wantMove = dx > 0 ? 1 : -1;
+  else if (dist < idealRange - 50 && !weapon.melee) wantMove = dx > 0 ? -1 : 1;
+  
+  if (wantMove !== 0) {
+    const groundAhead = hasGroundAhead(player, wantMove);
+    if (groundAhead || !player.onGround) {
+      player.vx += wantMove * 1.0;
+    } else if (player.onGround) {
+      // 前方没有地面：尝试跳跃跨越，否则停下（不走向深渊）
+      if (player.jumpsLeft > 0 && Math.random() < 0.03) {
+        player.vy = -CONFIG.JUMP_POWER;
+        player.jumpsLeft--;
+        player.vx += wantMove * 1.0;
+      }
+      // 否则原地等待，避免掉落
+    }
+  }
+  
+  // 目标在上方时积极跳跃（且脚下有地面）
+  if (player.onGround && dy < -60 && hasGroundAhead(player, player.facing) && Math.random() < 0.04) {
+    player.vy = -CONFIG.JUMP_POWER;
+    player.jumpsLeft--;
+  }
+  
+  // 地图边界保护
+  if (player.x < 40 && player.vx < 0) player.vx = 0;
+  if (player.x + player.w > CONFIG.CANVAS_WIDTH - 40 && player.vx > 0) player.vx = 0;
+  
+  // 不列颠空战：AI用燃料飞行追击/逃生
+  if (player.canFly && player.jetpackFuel > 15) {
+    if (dy < -40 || (player.y > 540 && player.vy > 0)) {
+      player.vy -= 0.6;
+      if (player.vy < -7) player.vy = -7;
+      player.jetpackFuel -= 0.8;
+      player.flying = true;
+      createJetpackParticles(player);
+    }
+  }
+  
+  if (player.onGround) {
+    const incomingBullet = gameState.bullets.find(b => {
+      const bdx = player.x - b.x, bdy = player.y - b.y;
+      return Math.abs(bdy) < 50 && bdx * b.vx > 0 && Math.abs(bdx) < 200;
+    });
+    
+    if (incomingBullet && Math.random() < accuracy * 0.5) {
+      player.vy = -CONFIG.JUMP_POWER;
+      player.jumpsLeft--;
+    } else if (Math.random() < 0.01 * aggression) {
+      player.vy = -CONFIG.JUMP_POWER;
+      player.jumpsLeft--;
+    }
+  }
+  
+  if (player.shootCooldown <= 0 && Math.abs(dy) < 100 && Math.random() < accuracy * 0.3) {
+    if (weapon.melee && dist < weapon.range) {
+      shoot(player);
+    } else if (weapon.laserBeam && dist < 900) {
+      shoot(player);
+    } else if (!weapon.melee && !weapon.laserBeam && dist < 500) {
+      shoot(player, dy / dist * accuracy);
+    }
+  }
+  
+  if (player.skillCooldown <= 0 && Math.random() < 0.02 * aggression) {
+    const skill = SKILLS[player.skill];
+    if (skill.active) {
+      if (player.skill === 'heal' && player.health < 50) useSkill(player);
+      else if (player.skill === 'shield' && dist < 200) useSkill(player);
+      else if (player.skill === 'dash' && dist > 200) useSkill(player);
+      else if (player.skill === 'megaBlast' && dist < 150) useSkill(player);
+      else if (Math.random() < 0.5) useSkill(player);
+    }
+  }
+  
+  player.blocking = false;
+  const incoming = gameState.bullets.find(b => {
+    const bdx = player.x - b.x;
+    return bdx * player.facing < 0 && Math.abs(bdx) < 100;
+  });
+  if (incoming && Math.random() < accuracy * 0.7) player.blocking = true;
+}
+
+// ==================== 首领AI（含防坠落） ====================
+function updateBossAI(boss) {
+  boss.flying = false;
+  const stats = boss.bossStats;
+  
+  const humans = gameState.players.filter(p => p.alive && p.team === 'human');
+  if (humans.length === 0) return;
+  let target = humans[0], minDist = Infinity;
+  humans.forEach(h => {
+    const d = Math.hypot(h.x - boss.x, h.y - boss.y);
+    if (d < minDist) { minDist = d; target = h; }
+  });
+  
+  const dx = target.x - boss.x;
+  const dy = target.y - boss.y;
+  const dist = Math.hypot(dx, dy);
+  
+  boss.facing = dx > 0 ? 1 : -1;
+  
+  const ideal = 280;
+  const dir = dx > 0 ? 1 : -1;
+  if (dist > ideal) {
+    if (hasGroundAhead(boss, dir) || !boss.onGround) {
+      boss.vx += dir * 0.5;
+    } else {
+      boss.vx -= dir * 0.5; // 前方是深渊，后退
+    }
+  } else if (dist < ideal - 80) {
+    boss.vx -= dir * 0.5;
+  }
+  
+  // 边界保护
+  if (boss.x < 40 && boss.vx < 0) boss.vx = 0;
+  if (boss.x + boss.w > CONFIG.CANVAS_WIDTH - 40 && boss.vx > 0) boss.vx = 0;
+  
+  if (boss.onGround && ((dy < -60 && Math.random() < 0.05) || Math.random() < 0.008)) {
+    boss.vy = -CONFIG.JUMP_POWER * 1.1;
+    boss.jumpsLeft = 1;
+  }
+  
+  if (boss.shootCooldown <= 0 && dist < 800) {
+    bossShoot(boss, target);
+    boss.shootCooldown = stats.fireRate;
+  }
+  
+  boss.blocking = false;
+}
+
+// ==================== 脉冲镭射 ====================
+function emitLaserBeam(player) {
+  const weapon = WEAPONS[player.weapon];
+  if (!weapon.laserBeam) return;
+  
+  const origin = { x: player.x + player.w/2, y: player.y + player.h * 0.5 };
+  const angle = player.facing === 1 ? 0 : Math.PI;
+  const maxLen = weapon.laserMaxLength;
+  
+  let endLen = maxLen;
+  const map = MAPS[gameState.selectedMap];
+  outer:
+  for (let d = 12; d <= maxLen; d += 8) {
+    const px = origin.x + Math.cos(angle) * d;
+    const py = origin.y + Math.sin(angle) * d;
+    for (const pl of map.platforms) {
+      if (px > pl.x && px < pl.x + pl.w && py > pl.y && py < pl.y + pl.h) {
+        endLen = d;
+        break outer;
+      }
+    }
+  }
+  
+  player.laserOrigin = origin;
+  player.laserEnd = endLen;
+  
+  if (gameState.frameCount % 6 === 0) {
+    gameState.players.forEach(t => {
+      if (t.id === player.id || !t.alive || t.invincible > 0) return;
+      if (!areEnemies(player, t)) return;
+      
+      const cx = t.x + t.w/2, cy = t.y + t.h/2;
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const tproj = Math.max(0, Math.min(endLen, (cx - origin.x) * dx + (cy - origin.y) * dy));
+      const px = origin.x + dx * tproj, py = origin.y + dy * tproj;
+      const d = Math.hypot(cx - px, cy - py);
+      
+      if (d < t.h/2 + 8) {
+        damagePlayer(t, weapon.damage, player, weapon.knockback, player.facing);
+      }
+    });
+  }
+  
+  if (endLen < maxLen && gameState.frameCount % 3 === 0) {
+    const ex = origin.x + Math.cos(angle) * endLen;
+    const ey = origin.y + Math.sin(angle) * endLen;
+    createImpactParticles(ex, ey, weapon.color);
+  }
+}
+
+// ==================== 玩家物理 ====================
+function updatePlayerPhysics(player) {
+  const map = MAPS[gameState.selectedMap];
+  
+  let speedMult = player.speedBoostActive > 0 ? 1.8 : 1.0;
+  if (player.poisonTimer > 0) speedMult *= 0.85;
+  
+  const baseMax = player.maxSpeed || CONFIG.MOVE_SPEED;
+  
+  if (player.launchedTimer > 0) {
+    // 击飞状态：不受速度钳制，轻微空气阻力，保持抛物线轨迹
+    player.launchedTimer--;
+    player.vx *= 0.985;
+  } else {
+    player.vx *= CONFIG.FRICTION;
+    player.vx = Math.max(-baseMax * speedMult, Math.min(baseMax * speedMult, player.vx));
+  }
+  
+  if (player.jetpackActive > 0) {
+    player.vy *= 0.9;
+  } else {
+    player.vy += CONFIG.GRAVITY;
+  }
+  player.vy = Math.min(player.vy, CONFIG.MAX_FALL_SPEED);
+  
+  player.x += player.vx;
+  player.y += player.vy;
+  
+  player.onGround = false;
+  map.platforms.forEach(platform => {
+    if (player.x + player.w > platform.x && player.x < platform.x + platform.w) {
+      if (player.y + player.h > platform.y && player.y + player.h - player.vy <= platform.y + 2) {
+        player.y = platform.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+        player.jumpsLeft = effectiveMaxJumps(player);
+        // 落地后击飞状态再维持一小段滑行
+        if (player.launchedTimer > 0) player.launchedTimer = Math.min(player.launchedTimer, 12);
+      }
+      else if (player.y < platform.y + platform.h && player.y - player.vy >= platform.y + platform.h - 2 && player.vy < 0) {
+        player.y = platform.y + platform.h;
+        player.vy = 0;
+      }
+    }
+    if (player.y + player.h > platform.y + 2 && player.y < platform.y + platform.h - 2) {
+      if (player.x + player.w > platform.x && player.x + player.w - player.vx <= platform.x + 2) {
+        player.x = platform.x - player.w;
+        if (player.launchedTimer <= 0) player.vx = 0;
+      } else if (player.x < platform.x + platform.w && player.x - player.vx >= platform.x + platform.w - 2) {
+        player.x = platform.x + platform.w;
+        if (player.launchedTimer <= 0) player.vx = 0;
+      }
+    }
+  });
+  
+  if (player.canFly && !player.flying) {
+    player.jetpackFuel = Math.min(100, player.jetpackFuel + 0.35);
+  }
+  
+  // 掉出地图：5秒内受过伤害则归属最后攻击者
+  if (player.y > CONFIG.CANVAS_HEIGHT + 100) {
+    let killer = null;
+    if (player.lastHitBy && (gameState.frameCount - player.lastHitTime) <= CONFIG.FALL_KILL_WINDOW) {
+      killer = player.lastHitBy;
+    }
+    killPlayer(player, killer, killer ? '被击飞出地图' : '掉落');
+  }
+  
+  if (player.x < -50) player.x = -50;
+  if (player.x > CONFIG.CANVAS_WIDTH + 50) player.x = CONFIG.CANVAS_WIDTH + 50;
+  
+  if (player.shootCooldown > 0) player.shootCooldown--;
+  if (player.skillCooldown > 0) player.skillCooldown--;
+  if (player.invincible > 0) player.invincible--;
+  if (player.shieldActive > 0) player.shieldActive--;
+  if (player.speedBoostActive > 0) player.speedBoostActive--;
+  if (player.jetpackActive > 0) player.jetpackActive--;
+}
+
+// ==================== 射击 ====================
+function shoot(player, aimError = 0) {
+  const weapon = WEAPONS[player.weapon];
+  
+  if (weapon.laserBeam) {
+    player.laserFiring = weapon.laserDuration;
+    player.shootCooldown = weapon.fireRate;
+    createMuzzleFlash(player, weapon);
+    camera.shake = Math.min(camera.shake + 5, 10);
+    return;
+  }
+  
+  if (weapon.ammo !== Infinity) {
+    if (player.weaponAmmo <= 0) {
+      player.weapon = 'unarmed';
+      player.weaponAmmo = Infinity;
+      return;
+    }
+    player.weaponAmmo--;
+  }
+  
+  player.shootCooldown = weapon.fireRate;
+  
+  if (player.stealth) player.stealthVisible = 60;
+  
+  if (weapon.melee) {
+    performMelee(player, weapon);
+    return;
+  }
+  
+  let damageMult = 1, knockbackMult = 1, speedMult = 1, sizeMult = 1;
+  if (weapon.chargeable && player.isCharging) {
+    const chargePct = player.chargeAmount / weapon.maxCharge;
+    damageMult = 1 + chargePct * 2;
+    knockbackMult = 1 + chargePct * 2;
+    speedMult = 1 + chargePct * 0.5;
+    sizeMult = 1 + chargePct;
+  }
+  
+  const bulletCount = weapon.pellets || 1;
+  for (let i = 0; i < bulletCount; i++) {
+    const angleBase = player.facing === 1 ? 0 : Math.PI;
+    let offset;
+    if (weapon.volleySpread) {
+      offset = (i - (bulletCount - 1) / 2) * weapon.volleySpread;
+    } else {
+      offset = (Math.random() - 0.5) * weapon.spread * 2;
+    }
+    const finalAngle = angleBase + offset + aimError;
+    
+    let bvx, bvy;
+    if (weapon.projectileArc) {
+      bvx = player.facing * weapon.bulletSpeed * speedMult;
+      bvy = -weapon.arcLift;
+    } else {
+      bvx = Math.cos(finalAngle) * weapon.bulletSpeed * speedMult;
+      bvy = Math.sin(finalAngle) * weapon.bulletSpeed * speedMult +
+            (weapon.volleySpread ? 0 : (i - bulletCount/2) * 0.5);
+    }
+    
+    gameState.bullets.push({
+      x: player.x + player.w/2 + player.facing * 20,
+      y: player.y + player.h * 0.5,
+      vx: bvx, vy: bvy,
+      damage: weapon.damage * damageMult,
+      knockback: weapon.knockback * knockbackMult,
+      size: weapon.bulletSize * sizeMult,
+      color: weapon.bulletColor,
+      ownerId: player.id, owner: player,
+      life: weapon.projectileArc ? 180 : 120,
+      explosive: weapon.explosive || false,
+      explosionRadius: (weapon.explosionRadius || 0) * sizeMult,
+      homing: weapon.homing || false,
+      piercing: weapon.piercing || false,
+      hitPlayers: new Set(), trail: [],
+      gravity: weapon.gravity || 0,
+      poison: weapon.poison || false,
+      stickToTarget: weapon.stickToTarget || false,
+      disableStealth: weapon.disableStealth || false,
+    });
+  }
+  
+  createMuzzleFlash(player, weapon);
+  player.vx -= player.facing * weapon.knockback * 0.1;
+  camera.shake = Math.min(camera.shake + weapon.knockback * 0.3, 10);
+}
+
+function performMelee(player, weapon) {
+  const range = weapon.range;
+  const hitX = player.x + (player.facing === 1 ? player.w : -range);
+  const hitW = range;
+  const hitY = player.y;
+  const hitH = player.h;
+  
+  gameState.particles.push({
+    x: player.x + player.w/2 + player.facing * range/2,
+    y: player.y + player.h/2,
+    vx: 0, vy: 0, size: range, color: weapon.color,
+    life: 10, maxLife: 10, alpha: 1, type: 'slash',
+    angle: player.facing === 1 ? 0 : Math.PI,
+  });
+  
+  gameState.players.forEach(target => {
+    if (target.id === player.id || !target.alive) return;
+    if (target.invincible > 0) return;
+    if (!areEnemies(player, target)) return;
+    
+    if (target.x + target.w > hitX && target.x < hitX + hitW &&
+        target.y + target.h > hitY && target.y < hitY + hitH) {
+      
+      if (target.umbrellaShield > 0 && target.blocking) {
+        target.umbrellaShield -= weapon.damage;
+        if (target.umbrellaShield <= 0) {
+          target.umbrellaShield = 0;
+          target.weapon = 'unarmed';
+          target.weaponAmmo = Infinity;
+          createFloatingText(target.x + target.w/2, target.y, '雨伞损坏!', '#ff6b1a');
+        }
+        createBlockEffect(target.x + target.w/2, target.y + target.h/2);
+        return;
+      }
+      
+      damagePlayer(target, weapon.damage, player, weapon.knockback, player.facing);
+      
+      if (weapon.stun) {
+        target.stunTimer = weapon.stunDuration;
+        createFloatingText(target.x + target.w/2, target.y, '眩晕!', '#ffd700');
+      }
+    }
+  });
+  
+  if (weapon.reflect) {
+    for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+      const b = gameState.bullets[i];
+      if (b.ownerId === player.id) continue;
+      const dx = b.x - (player.x + player.w/2);
+      const dy = b.y - (player.y + player.h/2);
+      if (Math.sqrt(dx*dx + dy*dy) < range) {
+        if (Math.random() < (weapon.reflectChance || 0.5)) {
+          b.vx = -b.vx; b.vy = -b.vy;
+          b.ownerId = player.id; b.owner = player;
+          b.color = weapon.color; b.damage *= 1.5; b.life = 60;
+          createBlockEffect(b.x, b.y);
+        }
+      }
+    }
+  }
+}
+
+// ==================== 子弹更新 ====================
+function updateBullet(bullet, index) {
+  if (bullet.gravity) bullet.vy += bullet.gravity;
+  
+  if (bullet.homing) {
+    const enemies = gameState.players.filter(p => 
+      p.alive && p.id !== bullet.ownerId && areEnemies(bullet.owner, p)
+    );
+    if (enemies.length > 0) {
+      let closest = enemies[0], minDist = Infinity;
+      enemies.forEach(e => {
+        const dx = e.x - bullet.x, dy = e.y - bullet.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < minDist) { minDist = dist; closest = e; }
+      });
+      
+      const dx = closest.x + closest.w/2 - bullet.x;
+      const dy = closest.y + closest.h/2 - bullet.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const speed = Math.sqrt(bullet.vx*bullet.vx + bullet.vy*bullet.vy);
+      
+      bullet.vx += (dx/dist) * 0.5;
+      bullet.vy += (dy/dist) * 0.5;
+      
+      const newSpeed = Math.sqrt(bullet.vx*bullet.vx + bullet.vy*bullet.vy);
+      bullet.vx = (bullet.vx / newSpeed) * speed;
+      bullet.vy = (bullet.vy / newSpeed) * speed;
+    }
+    
+    bullet.trail.push({x: bullet.x, y: bullet.y});
+    if (bullet.trail.length > 10) bullet.trail.shift();
+  }
+  
+  bullet.x += bullet.vx;
+  bullet.y += bullet.vy;
+  bullet.life--;
+  
+  const map = MAPS[gameState.selectedMap];
+  let hitPlatform = false;
+  map.platforms.forEach(platform => {
+    if (bullet.x > platform.x && bullet.x < platform.x + platform.w &&
+        bullet.y > platform.y && bullet.y < platform.y + platform.h) {
+      hitPlatform = true;
+    }
+  });
+  
+  if (bullet.x < 0 || bullet.x > CONFIG.CANVAS_WIDTH || 
+      bullet.y < 0 || bullet.y > CONFIG.CANVAS_HEIGHT || 
+      bullet.life <= 0 || hitPlatform) {
+    
+    if (bullet.explosive && (hitPlatform || bullet.life <= 0)) {
+      createExplosion(bullet.x, bullet.y, bullet.explosionRadius, bullet.owner, bullet.damage, bullet.knockback);
+    }
+    
+    createImpactParticles(bullet.x, bullet.y, bullet.color);
+    gameState.bullets.splice(index, 1);
+    return;
+  }
+  
+  let bulletRemoved = false;
+  gameState.players.forEach(player => {
+    if (bulletRemoved) return;
+    if (player.id === bullet.ownerId || !player.alive) return;
+    if (bullet.hitPlayers.has(player.id)) return;
+    if (player.invincible > 0) return;
+    if (!areEnemies(bullet.owner, player)) return;
+    
+    if (bullet.x > player.x && bullet.x < player.x + player.w &&
+        bullet.y > player.y && bullet.y < player.y + player.h) {
+      
+      if (player.stealth) player.stealthVisible = 120;
+      
+      if (bullet.disableStealth && player.stealth && !player.stealthDisabled) {
+        player.stealthDisabled = true;
+        player.stealthVisible = 999999;
+        createFloatingText(player.x + player.w/2, player.y, '隐身禁用!', '#ff2b4a');
+      }
+      
+      if (bullet.poison) {
+        player.poisonTimer = 300;
+        player.poisonSource = bullet.owner;
+        createFloatingText(player.x + player.w/2, player.y, '中毒!', '#2bff88');
+      }
+      
+      if (player.blocking && 
+          ((bullet.vx > 0 && player.facing === -1) || (bullet.vx < 0 && player.facing === 1))) {
+        bullet.vx = -bullet.vx * 0.7;
+        bullet.vy += (Math.random() - 0.5) * 4;
+        bullet.ownerId = player.id;
+        bullet.owner = player;
+        bullet.color = '#ffffff';
+        bullet.damage *= 0.5;
+        createBlockEffect(bullet.x, bullet.y);
+        return;
+      }
+      
+      if (player.umbrellaShield > 0) {
+        player.umbrellaShield -= bullet.damage;
+        if (player.umbrellaShield <= 0) {
+          player.umbrellaShield = 0;
+          player.weapon = 'unarmed';
+          player.weaponAmmo = Infinity;
+          createFloatingText(player.x + player.w/2, player.y, '雨伞损坏!', '#ff6b1a');
+        }
+        createBlockEffect(bullet.x, bullet.y);
+        bullet.hitPlayers.add(player.id);
+        if (!bullet.piercing) {
+          gameState.bullets.splice(index, 1);
+          bulletRemoved = true;
+        }
+        return;
+      }
+      
+      if (player.shieldActive > 0) {
+        createBlockEffect(bullet.x, bullet.y);
+        bullet.hitPlayers.add(player.id);
+        if (!bullet.piercing) {
+          gameState.bullets.splice(index, 1);
+          bulletRemoved = true;
+        }
+        return;
+      }
+      
+      damagePlayer(player, bullet.damage, bullet.owner, bullet.knockback, Math.sign(bullet.vx) || bullet.owner?.facing || 1);
+      bullet.hitPlayers.add(player.id);
+      
+      if (bullet.stickToTarget) {
+        player.stuckKnives.push({
+          x: bullet.x - player.x, y: bullet.y - player.y,
+          damage: WEAPONS.flyingKnife.stickDamage,
+          duration: WEAPONS.flyingKnife.stickDuration,
+          owner: bullet.owner,
+        });
+      }
+      
+      if (bullet.explosive) {
+        createExplosion(bullet.x, bullet.y, bullet.explosionRadius, bullet.owner, bullet.damage * 0.5, bullet.knockback * 0.5);
+        gameState.bullets.splice(index, 1);
+        bulletRemoved = true;
+      } else if (bullet.stickToTarget) {
+        gameState.bullets.splice(index, 1);
+        bulletRemoved = true;
+      } else if (!bullet.piercing) {
+        createImpactParticles(bullet.x, bullet.y, bullet.color);
+        gameState.bullets.splice(index, 1);
+        bulletRemoved = true;
+      }
+    }
+  });
+}
+
+// ==================== 伤害系统 ====================
+function damagePlayer(player, damage, attacker, knockback, direction) {
+  if (player.invincible > 0) return;
+  
+  if (player.blocking) {
+    damage *= 0.3;
+    knockback *= 0.3;
+  }
+  
+  player.health -= damage;
+  
+  // 记录最后攻击者（用于掉落击杀归属）
+  if (attacker) {
+    player.lastHitBy = attacker;
+    player.lastHitTime = gameState.frameCount;
+  }
+  
+  const kbResist = player.knockbackResist || 1;
+  const kb = knockback * CONFIG.KNOCKBACK_MULTIPLIER * kbResist;
+  player.vx += direction * kb;
+  
+  if (knockback >= CONFIG.LAUNCH_THRESHOLD && kbResist >= 1) {
+    // 强击退：抛物线击飞（戒尺等）
+    player.launchedTimer = 45;
+    player.vy = -(10 + knockback * 0.15) * CONFIG.KNOCKBACK_MULTIPLIER * kbResist;
+    createFloatingText(player.x + player.w/2, player.y - 10, '击飞!', '#ffd700');
+  } else {
+    player.vy -= knockback * 0.3 * CONFIG.KNOCKBACK_MULTIPLIER * kbResist;
+  }
+  
+  createFloatingText(player.x + player.w/2, player.y, Math.round(damage), '#ff2b4a');
+  createDamageParticles(player.x + player.w/2, player.y + player.h/2, player.color.primary);
+  
+  camera.shake = Math.min(camera.shake + knockback * 0.5, 15);
+  
+  if (player.health <= 0) {
+    killPlayer(player, attacker, '被击杀');
+  }
+}
+
+function killPlayer(player, killer, cause) {
+  if (!player.alive) return;
+  
+  player.alive = false;
+  player.deaths++;
+  player.respawnTimer = CONFIG.RESPAWN_TIME;
+  player.laserFiring = 0;
+  player.laserOrigin = null;
+  player.launchedTimer = 0;
+  
+  createDeathParticles(player);
+  
+  if (player.skill === 'selfDestruct' && killer) {
+    createExplosion(player.x + player.w/2, player.y + player.h/2, 100, player, 25, 20);
+    addKillFeed(player.name, '自爆了！', '#ff2b4a', '#ffd700');
+  }
+  
+  if (gameState.ballLightningEnabled) {
+    gameState.pendingBallLightning.push({
+      timer: CONFIG.BALL_LIGHTNING_DELAY,
+      x: player.x + player.w/2,
+      y: player.y + player.h/2,
+    });
+  }
+  
+  if (killer) {
+    killer.kills++;
+    if (gameState.mode === 'team' || gameState.mode === 'airBattle') {
+      if (killer.team === 'red') gameState.teamScores.red++;
+      else gameState.teamScores.blue++;
+    }
+    addKillFeed(killer.name, player.name, killer.color.primary, player.color.primary);
+  } else {
+    addKillFeed('系统', player.name + ' ' + cause, '#888', player.color.primary);
+  }
+  
+  if (player.isBoss) {
+    createExplosion(player.x + player.w/2, player.y + player.h/2, 200, null, 0, 0);
+    addKillFeed('系统', '首领被击败！！', '#ffd700', '#ff2b4a');
+  }
+  
+  if (document.getElementById('weaponDrop')?.checked !== false && Math.random() < 0.3) {
+    spawnPowerup(player.x + player.w/2, player.y + player.h/2);
+  }
+  
+  if (player.lives !== undefined) {
+    player.lives--;
+    if (player.lives <= 0) player.eliminated = true;
+  }
+}
+
+function respawnPlayer(player) {
+  if (player.noRespawn) return;
+  if (player.lives !== undefined && player.eliminated) return;
+  
+  const map = MAPS[gameState.selectedMap];
+  const spawn = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+  
+  player.x = spawn.x;
+  player.y = spawn.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.health = player.maxHealth;
+  player.alive = true;
+  player.invincible = 120;
+  player.shieldActive = 0;
+  player.speedBoostActive = 0;
+  player.jetpackActive = 0;
+  player.stunTimer = 0;
+  player.stealthVisible = 0;
+  player.stealthDisabled = false;
+  player.stuckKnives = [];
+  player.poisonTimer = 0;
+  player.laserFiring = 0;
+  player.laserOrigin = null;
+  player.launchedTimer = 0;
+  player.lastHitBy = null;
+  player.lastHitTime = -9999;
+  
+  const originalWeapon = player.originalWeapon || player.weapon;
+  player.weapon = originalWeapon;
+  player.weaponAmmo = WEAPONS[originalWeapon].ammo;
+  
+  if (WEAPONS[originalWeapon].shield) {
+    player.umbrellaShield = Math.floor(player.maxHealth * WEAPONS[originalWeapon].shieldMultiplier);
+  }
+  
+  player.jumpsLeft = effectiveMaxJumps(player);
+  if (player.canFly) player.jetpackFuel = 100;
+  
+  createRespawnEffect(player);
+}
+
+// ==================== 技能系统 ====================
+function useSkill(player) {
+  const skill = SKILLS[player.skill];
+  if (skill.passive) return;
+  if (player.skillCooldown > 0) return;
+  
+  player.skillCooldown = skill.cooldown;
+  
+  switch(player.skill) {
+    case 'dash':
+      player.vx = player.facing * 20;
+      player.invincible = 20;
+      createDashParticles(player);
+      break;
+    case 'shield':
+      player.shieldActive = skill.duration;
+      createShieldEffect(player);
+      break;
+    case 'speedBoost':
+      player.speedBoostActive = skill.duration;
+      createSpeedEffect(player);
+      break;
+    case 'jetpack':
+      player.jetpackActive = skill.duration;
+      player.vy = -8;
+      createJetpackParticles(player);
+      break;
+    case 'teleport':
+      player.x += player.facing * 150;
+      player.x = Math.max(0, Math.min(CONFIG.CANVAS_WIDTH - player.w, player.x));
+      createTeleportEffect(player);
+      player.invincible = 10;
+      break;
+    case 'heal':
+      player.health = Math.min(player.maxHealth, player.health + 40);
+      createHealEffect(player);
+      createFloatingText(player.x + player.w/2, player.y, '+40', '#2bff88');
+      break;
+    case 'megaBlast':
+      createMegaBlast(player);
+      break;
+  }
+}
+
+function updatePlayerSkills(player) {}
+
+// ==================== 道具系统 ====================
+function spawnPowerup(x, y) {
+  const types = ['health', 'weapon', 'ammo'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  
+  gameState.powerups.push({
+    x: x || Math.random() * (CONFIG.CANVAS_WIDTH - 100) + 50,
+    y: y || Math.random() * 300 + 100,
+    type: type, bobOffset: 0, life: 600,
+    color: type === 'health' ? '#ff2b4a' : type === 'weapon' ? '#ffd700' : '#00d9ff',
+  });
+}
+
+function applyPowerup(player, powerup) {
+  switch(powerup.type) {
+    case 'health':
+      player.health = Math.min(player.maxHealth, player.health + 50);
+      createFloatingText(player.x + player.w/2, player.y, '+50 HP', '#2bff88');
+      break;
+    case 'weapon': {
+      const newWeapon = randomWeaponKey();
+      player.weapon = newWeapon;
+      player.weaponAmmo = WEAPONS[newWeapon].ammo;
+      player.originalWeapon = newWeapon;
+      player.stealth = WEAPONS[newWeapon].stealth || false;
+      player.stealthVisible = 0;
+      player.stealthDisabled = false;
+      if (WEAPONS[newWeapon].shield) {
+        player.umbrellaShield = Math.floor(player.maxHealth * WEAPONS[newWeapon].shieldMultiplier);
+      } else {
+        player.umbrellaShield = 0;
+      }
+      createFloatingText(player.x + player.w/2, player.y, WEAPONS[newWeapon].name, '#ffd700');
+      break;
+    }
+    case 'ammo':
+      player.weaponAmmo = WEAPONS[player.weapon].ammo;
+      createFloatingText(player.x + player.w/2, player.y, '弹药已满', '#00d9ff');
+      break;
+  }
+}
+
+// ==================== 粒子效果 ====================
+function createSpawnPortalEffect(x, y) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4,
+      size: Math.random() * 5 + 2, color: '#ff2b4a',
+      life: 30, maxLife: 30, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createMuzzleFlash(player, weapon) {
+  const x = player.x + player.w/2 + player.facing * 25;
+  const y = player.y + player.h * 0.5;
+  
+  for (let i = 0; i < 5; i++) {
+    gameState.particles.push({
+      x, y,
+      vx: player.facing * (Math.random() * 3 + 2) + (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 3,
+      size: Math.random() * 4 + 2, color: weapon.color,
+      life: 10, maxLife: 10, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createJumpParticles(player) {
+  for (let i = 0; i < 5; i++) {
+    gameState.particles.push({
+      x: player.x + player.w/2 + (Math.random() - 0.5) * player.w,
+      y: player.y + player.h,
+      vx: (Math.random() - 0.5) * 3, vy: Math.random() * 2,
+      size: Math.random() * 3 + 1, color: '#ffffff',
+      life: 15, maxLife: 15, alpha: 0.6, type: 'circle',
+    });
+  }
+}
+
+function createDamageParticles(x, y, color) {
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 2;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      size: Math.random() * 4 + 2, color,
+      life: 20, maxLife: 20, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createDeathParticles(player) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 6 + 2;
+    gameState.particles.push({
+      x: player.x + player.w/2, y: player.y + player.h/2,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+      size: Math.random() * 5 + 3, color: player.color.primary,
+      life: 40, maxLife: 40, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createImpactParticles(x, y, color) {
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 3 + 1;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      size: Math.random() * 3 + 1, color,
+      life: 15, maxLife: 15, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createExplosion(x, y, radius, owner, damage, knockback) {
+  for (let i = 0; i < 25; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 8 + 3;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      size: Math.random() * 8 + 4,
+      color: ['#ff6b1a', '#ff2b4a', '#ffd700'][Math.floor(Math.random() * 3)],
+      life: 30, maxLife: 30, alpha: 1, type: 'circle',
+    });
+  }
+  
+  gameState.particles.push({
+    x, y, vx: 0, vy: 0, size: 10, maxSize: radius,
+    color: '#ff6b1a', life: 20, maxLife: 20, alpha: 0.8, type: 'shockwave',
+  });
+  
+  camera.shake = Math.min(camera.shake + 15, 25);
+  
+  if (damage > 0) {
+    gameState.players.forEach(player => {
+      if (!player.alive || player.id === owner?.id) return;
+      if (player.invincible > 0) return;
+      
+      const dx = player.x + player.w/2 - x;
+      const dy = player.y + player.h/2 - y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      
+      if (dist < radius) {
+        const falloff = 1 - (dist / radius);
+        damagePlayer(player, damage * falloff, owner, knockback * falloff, Math.sign(dx) || 1);
+      }
+    });
+  }
+}
+
+function createDashParticles(player) {
+  for (let i = 0; i < 10; i++) {
+    gameState.particles.push({
+      x: player.x + player.w/2,
+      y: player.y + player.h/2 + (Math.random() - 0.5) * player.h,
+      vx: -player.facing * (Math.random() * 3 + 1), vy: (Math.random() - 0.5) * 2,
+      size: Math.random() * 5 + 3, color: '#2bff88',
+      life: 20, maxLife: 20, alpha: 0.8, type: 'circle',
+    });
+  }
+}
+
+function createShieldEffect(player) {
+  gameState.particles.push({
+    x: player.x + player.w/2, y: player.y + player.h/2,
+    vx: 0, vy: 0, size: 5, maxSize: 45,
+    color: '#00d9ff', life: 120, maxLife: 120, alpha: 0.4,
+    type: 'shield', followPlayer: player,
+  });
+}
+
+function createSpeedEffect(player) {
+  for (let i = 0; i < 5; i++) {
+    gameState.particles.push({
+      x: player.x + player.w/2,
+      y: player.y + player.h/2 + (Math.random() - 0.5) * player.h,
+      vx: -player.vx * 0.5, vy: 0,
+      size: Math.random() * 3 + 2, color: '#ffd700',
+      life: 15, maxLife: 15, alpha: 0.6, type: 'circle',
+    });
+  }
+}
+
+function createJetpackParticles(player) {
+  gameState.particles.push({
+    x: player.x + player.w/2 + (Math.random() - 0.5) * 10,
+    y: player.y + player.h,
+    vx: (Math.random() - 0.5) * 2, vy: Math.random() * 3 + 2,
+    size: Math.random() * 4 + 3,
+    color: ['#ff6b1a', '#ffd700'][Math.floor(Math.random() * 2)],
+    life: 15, maxLife: 15, alpha: 0.8, type: 'circle',
+  });
+}
+
+function createTeleportEffect(player) {
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    gameState.particles.push({
+      x: player.x + player.w/2, y: player.y + player.h/2,
+      vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+      size: Math.random() * 4 + 2, color: '#6c2bd9',
+      life: 20, maxLife: 20, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createHealEffect(player) {
+  for (let i = 0; i < 10; i++) {
+    gameState.particles.push({
+      x: player.x + player.w/2 + (Math.random() - 0.5) * player.w,
+      y: player.y + player.h,
+      vx: (Math.random() - 0.5) * 1, vy: -Math.random() * 3 - 1,
+      size: Math.random() * 4 + 2, color: '#2bff88',
+      life: 30, maxLife: 30, alpha: 0.8, type: 'circle',
+    });
+  }
+}
+
+function createMegaBlast(player) {
+  const cx = player.x + player.w/2;
+  const cy = player.y + player.h/2;
+  const radius = 150;
+  
+  gameState.particles.push({
+    x: cx, y: cy, vx: 0, vy: 0, size: 10, maxSize: radius,
+    color: '#ff2b4a', life: 25, maxLife: 25, alpha: 0.8, type: 'shockwave',
+  });
+  
+  for (let i = 0; i < 30; i++) {
+    const angle = (i / 30) * Math.PI * 2;
+    gameState.particles.push({
+      x: cx, y: cy, vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8,
+      size: Math.random() * 6 + 3, color: '#ff2b4a',
+      life: 25, maxLife: 25, alpha: 1, type: 'circle',
+    });
+  }
+  
+  camera.shake = 20;
+  
+  gameState.players.forEach(target => {
+    if (target.id === player.id || !target.alive) return;
+    if (!areEnemies(player, target)) return;
+    const dx = target.x + target.w/2 - cx;
+    const dy = target.y + target.h/2 - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < radius) {
+      const force = (1 - dist/radius) * 25;
+      target.vx += (dx/dist) * force;
+      target.vy -= force * 0.5;
+      damagePlayer(target, 10, player, 0, Math.sign(dx) || 1);
+    }
+  });
+}
+
+function createBlockEffect(x, y) {
+  for (let i = 0; i < 5; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+      size: Math.random() * 3 + 1, color: '#ffffff',
+      life: 10, maxLife: 10, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createRespawnEffect(player) {
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    gameState.particles.push({
+      x: player.x + player.w/2, y: player.y + player.h/2,
+      vx: Math.cos(angle) * 2, vy: Math.sin(angle) * 2,
+      size: Math.random() * 4 + 2, color: player.color.primary,
+      life: 25, maxLife: 25, alpha: 0.8, type: 'circle',
+    });
+  }
+}
+
+function createPickupEffect(x, y, color) {
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    gameState.particles.push({
+      x, y, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4 - 2,
+      size: Math.random() * 4 + 2, color,
+      life: 25, maxLife: 25, alpha: 1, type: 'circle',
+    });
+  }
+}
+
+function createFloatingText(x, y, text, color) {
+  gameState.particles.push({
+    x, y, vx: 0, vy: -1, size: 0, color,
+    life: 60, maxLife: 60, alpha: 1, type: 'text', text: String(text),
+  });
+}
+
+// ==================== 击杀提示 ====================
+function addKillFeed(killer, victim, killerColor, victimColor) {
+  const feed = document.getElementById('killFeed');
+  const item = document.createElement('div');
+  item.className = 'kill-feed-item glass rounded-lg px-3 py-1.5 text-sm flex items-center gap-2';
+  item.innerHTML = `
+    <span style="color: ${killerColor}" class="font-bold">${killer}</span>
+    <i class="fas fa-skull text-gray-400 text-xs"></i>
+    <span style="color: ${victimColor}" class="font-bold">${victim}</span>
+  `;
+  feed.insertBefore(item, feed.firstChild);
+  
+  while (feed.children.length > 5) feed.removeChild(feed.lastChild);
+  
+  setTimeout(() => {
+    if (item.parentNode) {
+      item.style.opacity = '0';
+      item.style.transition = 'opacity 0.5s';
+      setTimeout(() => item.remove(), 500);
+    }
+  }, 5000);
+}
+
+// ==================== 胜利条件检查 ====================
+function checkWinCondition() {
+  if (gameState.mode === 'deathmatch') {
+    const winner = gameState.players.find(p => p.kills >= gameState.killLimit);
+    if (winner) endGame(`${winner.name} 获胜！`, winner);
+  } else if (gameState.mode === 'team' || gameState.mode === 'airBattle') {
+    if (gameState.teamScores.red >= gameState.killLimit) endGame('红队获胜！');
+    else if (gameState.teamScores.blue >= gameState.killLimit) endGame('蓝队获胜！');
+  } else if (gameState.mode === 'infiniteFirepower') {
+    if (getHumanKills() >= gameState.killLimit) {
+      endGame('人类阵营达成击杀目标，获胜！');
+    }
+  } else if (gameState.mode === 'bossBattle') {
+    const boss = gameState.players.find(p => p.isBoss);
+    if (boss && !boss.alive) {
+      endGame('首领已被击败！人类阵营胜利！');
+    } else {
+      const humans = gameState.players.filter(p => p.team === 'human');
+      if (humans.length > 0 && humans.every(p => p.eliminated)) {
+        endGame('所有玩家被消灭，首领获胜...');
+      }
+    }
+  } else if (gameState.mode === 'lastMan') {
+    // 固定命数模式：耗尽命数即淘汰，剩最后一人为胜者
+    const contenders = gameState.players.filter(p => !p.eliminated);
+    if (contenders.length <= 1) {
+      const winner = contenders[0];
+      if (winner) endGame(`${winner.name} 是最后幸存者！`, winner);
+    }
+  }
+}
+
+function endGame(message, winner) {
+  gameState.gameRunning = false;
+  
+  const titleEl = document.getElementById('gameOverTitle');
+  const subEl = document.getElementById('gameOverSubtitle');
+  const statsEl = document.getElementById('finalStats');
+  
+  if (winner) {
+    titleEl.textContent = message;
+    titleEl.style.color = winner.color.primary;
+  } else {
+    titleEl.textContent = '游戏结束';
+    titleEl.style.color = '#ffd700';
+  }
+  subEl.textContent = message;
+  
+  const sorted = [...gameState.players].sort((a, b) => b.kills - a.kills);
+  statsEl.innerHTML = sorted.map((p, i) => `
+    <div class="flex items-center justify-between text-white text-sm">
+      <span><span class="text-gray-500">#${i+1}</span> <span style="color: ${p.color.primary}">${p.name}</span>${p.isBoss ? ' 👑' : ''}${p.eliminated ? ' ☠' : ''}</span>
+      <span>${p.kills} 击杀 / ${p.deaths} 死亡${p.lives !== undefined ? ` / 剩${Math.max(0, p.lives)}命` : ''}</span>
+    </div>
+  `).join('');
+  
+  document.getElementById('gameOverScreen').classList.remove('hidden');
+}
+
+// ==================== 游戏控制 ====================
+function pauseGame() {
+  gameState.paused = true;
+  document.getElementById('pauseMenu').classList.remove('hidden');
+}
+function resumeGame() {
+  gameState.paused = false;
+  document.getElementById('pauseMenu').classList.add('hidden');
+}
+function togglePause() {
+  if (gameState.paused) resumeGame();
+  else pauseGame();
+}
+function restartGame() {
+  document.getElementById('pauseMenu').classList.add('hidden');
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  startGame();
+}
+function quitToMenu() {
+  gameState.gameRunning = false;
+  gameState.paused = false;
+  document.getElementById('pauseMenu').classList.add('hidden');
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  showScreen('mainMenu');
+}
+
+// ==================== 渲染 ====================
+function render() {
+  const map = MAPS[gameState.selectedMap];
+  
+  const shakeX = (Math.random() - 0.5) * camera.shake;
+  const shakeY = (Math.random() - 0.5) * camera.shake;
+  
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+  
+  const gradient = ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_HEIGHT);
+  gradient.addColorStop(0, map.bgGradient[0]);
+  gradient.addColorStop(1, map.bgGradient[1]);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+  
+  renderBackground(map);
+  
+  map.platforms.forEach(platform => {
+    ctx.fillStyle = platform.color;
+    ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(platform.x, platform.y, platform.w, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(platform.x, platform.y + platform.h - 2, platform.w, 2);
+  });
+  
+  gameState.powerups.forEach(pu => {
+    const bob = Math.sin(pu.bobOffset) * 5;
+    ctx.save();
+    ctx.translate(pu.x, pu.y + bob);
+    
+    const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 25);
+    glowGrad.addColorStop(0, pu.color + '80');
+    glowGrad.addColorStop(1, pu.color + '00');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = pu.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pu.type === 'health' ? '+' : pu.type === 'weapon' ? 'W' : 'A', 0, 0);
+    ctx.restore();
+  });
+  
+  // 脉冲镭射光束
+  gameState.players.forEach(player => {
+    if (player.laserFiring > 0 && player.laserOrigin && player.alive) {
+      const o = player.laserOrigin;
+      const angle = player.facing === 1 ? 0 : Math.PI;
+      const len = player.laserEnd || 2000;
+      const ex = o.x + Math.cos(angle) * len;
+      const ey = o.y + Math.sin(angle) * len;
+      const pulseW = 3 + Math.sin(gameState.frameCount * 0.6) * 2;
+      
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 43, 74, 0.35)';
+      ctx.lineWidth = 12 + pulseW * 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.strokeStyle = '#ff2b4a';
+      ctx.lineWidth = 5 + pulseW;
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+  
+  gameState.ballLightnings.forEach(bl => renderBallLightning(bl));
+  
+  gameState.bullets.forEach(bullet => {
+    if (bullet.trail && bullet.trail.length > 0) {
+      bullet.trail.forEach((t, i) => {
+        const alpha = i / bullet.trail.length;
+        ctx.fillStyle = bullet.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, bullet.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    
+    const glowGrad = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, bullet.size * 3);
+    glowGrad.addColorStop(0, bullet.color + 'ff');
+    glowGrad.addColorStop(0.5, bullet.color + '80');
+    glowGrad.addColorStop(1, bullet.color + '00');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, bullet.size * 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = bullet.color;
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, bullet.size, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, bullet.size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  gameState.particles.forEach(p => {
+    ctx.globalAlpha = p.alpha;
+    
+    if (p.type === 'circle') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'shockwave') {
+      const progress = 1 - p.life / p.maxLife;
+      const size = p.size + (p.maxSize - p.size) * progress;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 4 * (1 - progress);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.type === 'shield') {
+      if (p.followPlayer) {
+        p.x = p.followPlayer.x + p.followPlayer.w/2;
+        p.y = p.followPlayer.y + p.followPlayer.h/2;
+      }
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 35, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.type === 'slash') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 5;
+      ctx.globalAlpha = p.alpha * 0.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size, -Math.PI/3, Math.PI/3);
+      ctx.stroke();
+      ctx.restore();
+    } else if (p.type === 'text') {
+      ctx.fillStyle = p.color;
+      ctx.font = 'bold 18px Inter';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillText(p.text, p.x, p.y);
+    }
+  });
+  ctx.globalAlpha = 1;
+  
+  gameState.players.forEach(player => {
+    if (!player.alive) {
+      if (player.noRespawn || player.eliminated) return;
+      ctx.fillStyle = player.color.primary + '80';
+      ctx.font = 'bold 20px Russo One';
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.ceil(player.respawnTimer / 60), player.x, player.y - 30);
+      return;
+    }
+    renderPlayer(player);
+  });
+  
+  if (document.getElementById('showFPS')?.checked) {
+    ctx.fillStyle = '#2bff88';
+    ctx.font = '14px Inter';
+    ctx.textAlign = 'left';
+    ctx.fillText(`FPS: ${Math.round(fps)}`, 10, 20);
+    ctx.fillText(`Bullets: ${gameState.bullets.length}`, 10, 40);
+  }
+  
+  ctx.restore();
+}
+
+function renderBallLightning(bl) {
+  const pulse = Math.sin(bl.pulsePhase) * 0.3 + 0.7;
+  
+  const outerGrad = ctx.createRadialGradient(bl.x, bl.y, 0, bl.x, bl.y, bl.radius * 3);
+  outerGrad.addColorStop(0, `rgba(0, 217, 255, ${0.8 * pulse})`);
+  outerGrad.addColorStop(0.5, `rgba(108, 43, 217, ${0.4 * pulse})`);
+  outerGrad.addColorStop(1, 'rgba(0, 217, 255, 0)');
+  ctx.fillStyle = outerGrad;
+  ctx.beginPath();
+  ctx.arc(bl.x, bl.y, bl.radius * 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) {
+    const angle = (bl.pulsePhase + i * Math.PI * 2 / 5) % (Math.PI * 2);
+    const len = bl.radius * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bl.x, bl.y);
+    let px = bl.x, py = bl.y;
+    for (let j = 0; j < 4; j++) {
+      px += Math.cos(angle + (Math.random() - 0.5) * 0.5) * len / 4;
+      py += Math.sin(angle + (Math.random() - 0.5) * 0.5) * len / 4;
+      ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  
+  const coreGrad = ctx.createRadialGradient(bl.x, bl.y, 0, bl.x, bl.y, bl.radius);
+  coreGrad.addColorStop(0, '#ffffff');
+  coreGrad.addColorStop(0.5, '#00d9ff');
+  coreGrad.addColorStop(1, '#6c2bd9');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(bl.x, bl.y, bl.radius * pulse, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function renderBackground(map) {
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  
+  if (map.theme === 'classic') {
+    ctx.strokeStyle = '#ffffff10';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < CONFIG.CANVAS_WIDTH; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.CANVAS_HEIGHT); ctx.stroke();
+    }
+    for (let y = 0; y < CONFIG.CANVAS_HEIGHT; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CONFIG.CANVAS_WIDTH, y); ctx.stroke();
+    }
+  } else if (map.theme === 'floating') {
+    for (let i = 0; i < 5; i++) {
+      const x = (i * 300 + gameState.frameCount * 0.2) % (CONFIG.CANVAS_WIDTH + 200) - 100;
+      const y = 100 + i * 80;
+      ctx.fillStyle = '#ffffff10';
+      ctx.beginPath();
+      ctx.arc(x, y, 40, 0, Math.PI * 2);
+      ctx.arc(x + 30, y, 35, 0, Math.PI * 2);
+      ctx.arc(x + 60, y, 40, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (map.theme === 'pyramid') {
+    ctx.fillStyle = '#ffd70010';
+    ctx.beginPath();
+    ctx.moveTo(CONFIG.CANVAS_WIDTH/2, 50);
+    ctx.lineTo(CONFIG.CANVAS_WIDTH/2 - 200, 350);
+    ctx.lineTo(CONFIG.CANVAS_WIDTH/2 + 200, 350);
+    ctx.closePath();
+    ctx.fill();
+  }
+  
+  ctx.restore();
+}
+
+// ==================== AI头像绘制（加大版） ====================
+function drawAIAvatar(player) {
+  const size = player.isBoss ? 64 : 40;
+  const ax = player.x + player.w/2 - size/2;
+  const ay = player.y - size - 28; // 位于名字上方，避免遮挡
+  
+  const av = player.isBoss ? AVATARS.boss : AVATARS[player.aiDifficulty];
+  
+  ctx.save();
+  if (av) {
+    ctx.drawImage(av, ax, ay, size, size);
+    ctx.strokeStyle = player.isBoss ? '#ff2b4a' : DIFF_COLORS[player.aiDifficulty];
+    ctx.lineWidth = player.isBoss ? 3 : 2;
+    ctx.strokeRect(ax, ay, size, size);
+  } else {
+    ctx.fillStyle = player.isBoss ? '#8a0a1a' : '#2a2a4a';
+    ctx.fillRect(ax, ay, size, size);
+    ctx.strokeStyle = player.isBoss ? '#ff2b4a' : DIFF_COLORS[player.aiDifficulty];
+    ctx.lineWidth = player.isBoss ? 3 : 2;
+    ctx.strokeRect(ax, ay, size, size);
+    
+    ctx.fillStyle = player.isBoss ? '#ff2b4a' : DIFF_COLORS[player.aiDifficulty];
+    ctx.font = `bold ${player.isBoss ? 22 : 14}px Inter`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(player.isBoss ? '👑' : '★'.repeat(DIFF_STARS[player.aiDifficulty] || 1), ax + size/2, ay + size/2);
+  }
+  
+  // 难度小标签
+  if (!player.isBoss) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(ax, ay + size - 10, size, 10);
+    ctx.fillStyle = DIFF_COLORS[player.aiDifficulty];
+    ctx.font = 'bold 8px Inter';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(DIFF_NAMES[player.aiDifficulty] || '', ax + size/2, ay + size - 5);
+  }
+  ctx.restore();
+}
+
+function renderPlayer(player) {
+  ctx.save();
+  
+  if (player.stealth && !player.stealthDisabled && player.stealthVisible <= 0) {
+    ctx.globalAlpha = 0.2;
+  } else if (player.stealth && player.stealthVisible > 0 && player.stealthVisible < 999999) {
+    ctx.globalAlpha = 0.6;
+  }
+  
+  if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
+    ctx.globalAlpha *= 0.5;
+  }
+  
+  if (player.stunTimer > 0) {
+    ctx.globalAlpha *= 0.7;
+    for (let i = 0; i < 3; i++) {
+      const angle = (gameState.frameCount * 0.1 + i * Math.PI * 2 / 3) % (Math.PI * 2);
+      const sx = player.x + player.w/2 + Math.cos(angle) * 20;
+      const sy = player.y - 5 + Math.sin(angle) * 5;
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '12px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('★', sx, sy);
+    }
+  }
+  
+  if (player.shieldActive > 0) {
+    ctx.strokeStyle = '#00d9ff';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(player.x + player.w/2, player.y + player.h/2, Math.max(35, player.h * 0.7), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  
+  if (player.umbrellaShield > 0) {
+    ctx.strokeStyle = '#ff6b1a';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(player.x + player.w/2, player.y + 10, Math.max(30, player.w), Math.PI, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  
+  if (player.speedBoostActive > 0) {
+    ctx.strokeStyle = '#ffd70080';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(player.x + player.w/2, player.y + player.h/2, 25 + i * 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  
+  // 身体
+  const bodyGrad = ctx.createLinearGradient(player.x, player.y, player.x, player.y + player.h);
+  bodyGrad.addColorStop(0, player.color.light);
+  bodyGrad.addColorStop(0.5, player.color.primary);
+  bodyGrad.addColorStop(1, player.color.dark);
+  ctx.fillStyle = bodyGrad;
+  
+  roundRect(ctx, player.x, player.y, player.w, player.h, 8);
+  ctx.fill();
+  
+  ctx.strokeStyle = player.color.dark;
+  ctx.lineWidth = 2;
+  roundRect(ctx, player.x, player.y, player.w, player.h, 8);
+  ctx.stroke();
+  
+  // 中毒绿色覆盖
+  if (player.poisonTimer > 0) {
+    ctx.fillStyle = 'rgba(43, 255, 136, 0.18)';
+    roundRect(ctx, player.x, player.y, player.w, player.h, 8);
+    ctx.fill();
+  }
+  
+  // 眼睛
+  const eyeX = player.x + player.w/2 + player.facing * (player.w * 0.15);
+  const eyeY = player.y + player.h * 0.28;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(eyeX, eyeY, player.isBoss ? 7 : 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.arc(eyeX + player.facing * 2, eyeY, player.isBoss ? 4 : 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // 武器
+  const weapon = WEAPONS[player.weapon];
+  const weaponX = player.x + (player.facing === 1 ? player.w - 5 : 5);
+  const weaponY = player.y + player.h * 0.5;
+  
+  ctx.save();
+  ctx.translate(weaponX, weaponY);
+  if (player.facing === -1) ctx.scale(-1, 1);
+  
+  ctx.fillStyle = weapon.color;
+  if (weapon.melee) {
+    if (player.weapon === 'katana') {
+      ctx.fillRect(0, -2, 25, 4);
+      ctx.fillStyle = '#888888';
+      ctx.fillRect(-5, -3, 8, 6);
+    } else if (player.weapon === 'ruler') {
+      ctx.fillRect(0, -3, 30, 6);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(5, -2, 2, 4);
+      ctx.fillRect(15, -2, 2, 4);
+      ctx.fillRect(25, -2, 2, 4);
+    } else if (player.weapon === 'umbrella') {
+      ctx.beginPath();
+      ctx.arc(15, -5, 15, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#666';
+      ctx.fillRect(13, -5, 4, 20);
+    } else {
+      ctx.beginPath();
+      ctx.arc(5, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (player.weapon === 'zhugeCrossbow') {
+    ctx.fillRect(0, -3, 22, 6);
+    ctx.strokeStyle = weapon.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(10, -8);
+    ctx.quadraticCurveTo(18, -14, 26, -8);
+    ctx.stroke();
+    ctx.fillStyle = '#333';
+    ctx.fillRect(20, -2, 8, 3);
+  } else if (player.weapon === 'pulseLaser') {
+    ctx.fillRect(0, -4, 24, 8);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(22, -2, 10, 4);
+    if (player.laserFiring > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(28, 0, 6 + Math.sin(gameState.frameCount) * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    ctx.fillRect(0, -3, 20, 6);
+    ctx.fillRect(5, 0, 8, 10);
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(18, -2, 8, 3);
+    
+    if (player.isCharging && weapon.chargeable) {
+      const chargePct = player.chargeAmount / weapon.maxCharge;
+      ctx.fillStyle = `rgba(255, 215, 0, ${chargePct})`;
+      ctx.beginPath();
+      ctx.arc(25, 0, 5 + chargePct * 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  
+  // 插在身上的飞刀
+  player.stuckKnives.forEach(knife => {
+    ctx.save();
+    ctx.translate(player.x + knife.x, player.y + knife.y);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillRect(-2, -8, 4, 16);
+    ctx.fillStyle = '#666';
+    ctx.fillRect(-3, 6, 6, 4);
+    ctx.restore();
+  });
+  
+  // 格挡
+  if (player.blocking) {
+    ctx.strokeStyle = '#ffffff80';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x + player.w/2 - player.facing * 15, player.y + player.h/2, 20, 
+           player.facing === 1 ? Math.PI/2 : -Math.PI/2, 
+           player.facing === 1 ? Math.PI*3/2 : Math.PI/2);
+    ctx.stroke();
+  }
+  
+  // 生命条
+  const healthBarW = player.isBoss ? player.w + 20 : player.w + 10;
+  const healthBarH = 4;
+  const healthBarX = player.x - (player.isBoss ? 10 : 5);
+  const healthBarY = player.y - 10;
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(healthBarX, healthBarY, healthBarW, healthBarH);
+  
+  const healthPct = Math.max(0, player.health / player.maxHealth);
+  const healthGrad = ctx.createLinearGradient(healthBarX, 0, healthBarX + healthBarW, 0);
+  healthGrad.addColorStop(0, '#ff2b4a');
+  healthGrad.addColorStop(0.5, '#ff6b1a');
+  healthGrad.addColorStop(1, '#2bff88');
+  ctx.fillStyle = healthGrad;
+  ctx.fillRect(healthBarX, healthBarY, healthBarW * healthPct, healthBarH);
+  
+  // 蓄力条
+  if (player.isCharging && WEAPONS[player.weapon].chargeable) {
+    const chargeBarY = player.y + player.h + 4;
+    const chargePct = player.chargeAmount / WEAPONS[player.weapon].maxCharge;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(healthBarX, chargeBarY, healthBarW, 3);
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(healthBarX, chargeBarY, healthBarW * chargePct, 3);
+  }
+  
+  // 名字
+  ctx.fillStyle = player.color.primary;
+  ctx.font = player.isBoss ? 'bold 16px Inter' : 'bold 11px Inter';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2;
+  ctx.strokeText(player.name, player.x + player.w/2, player.y - 20);
+  ctx.fillText(player.name, player.x + player.w/2, player.y - 20);
+  
+  // AI头像（放大版）
+  if (player.isAI) {
+    drawAIAvatar(player);
+  }
+  
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ==================== FPS计算 ====================
+let lastTime = performance.now();
+let frames = 0;
+let fps = 60;
+
+function updateFPS() {
+  const now = performance.now();
+  frames++;
+  if (now - lastTime >= 1000) {
+    fps = frames * 1000 / (now - lastTime);
+    frames = 0;
+    lastTime = now;
+  }
+}
+
+// ==================== 启动 ====================
+init();
+</script>
+
+</body>
+</html>
